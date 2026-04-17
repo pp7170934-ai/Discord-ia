@@ -320,7 +320,6 @@ client.on('interactionCreate', async interaction => {
         .setColor(0x5865F2)
         .setAuthor({ name: `Question by ${user.username}`, iconURL: user.displayAvatarURL() })
         .setDescription(chunks[0])
-        .setFooter({ text: 'Powered by Groq • llama-3.3-70b' });
 
       await interaction.editReply({ embeds: [embed] });
 
