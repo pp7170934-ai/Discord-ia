@@ -42,8 +42,15 @@ db.exec(`
 let maintenanceMode = false;
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
-  partials: ['CHANNEL']
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.DirectMessageReactions,
+    GatewayIntentBits.DirectMessageTyping,
+    GatewayIntentBits.MessageContent,
+  ],
+  partials: ['CHANNEL', 'MESSAGE', 'REACTION']
 });
 
 const commands = [
