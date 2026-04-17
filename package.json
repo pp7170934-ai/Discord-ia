@@ -4,12 +4,17 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start": "node bot.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@types/node": "^22.13.11"
+    "@google/generative-ai": "^0.24.1",
+    "@types/node": "^22.13.11",
+    "better-sqlite3": "^12.9.0",
+    "discord.js": "^14.26.3",
+    "uuid": "^13.0.0"
   }
 }
