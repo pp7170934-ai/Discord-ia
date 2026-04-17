@@ -299,7 +299,7 @@ client.on('interactionCreate', async interaction => {
       const config = getUserConfig(user.id);
       const { system, question: q } = buildAIPrompt(config, question);
 
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash', systemInstruction: system });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash', systemInstruction: system });
       const result = await model.generateContent(q);
       const text = result.response.text();
 
