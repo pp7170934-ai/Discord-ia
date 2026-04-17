@@ -39,6 +39,8 @@ db.exec(`
   );
 `);
 
+let maintenanceMode = false;
+
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages],
   partials: ['CHANNEL']
@@ -129,6 +131,92 @@ const commands = [
     .setName('about')
     .setDescription('About this bot')
     .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('ping')
+    .setDescription('Check bot latency')
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('avatar')
+    .setDescription('Get the avatar of a user')
+    .addUserOption(opt => opt.setName('user').setDescription('User to get avatar of'))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('8ball')
+    .setDescription('Ask the magic 8 ball a question')
+    .addStringOption(opt => opt.setName('question').setDescription('Your yes/no question').setRequired(true))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('coinflip')
+    .setDescription('Flip a coin')
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('roast')
+    .setDescription('Get the AI to roast someone')
+    .addUserOption(opt => opt.setName('user').setDescription('Who to roast').setRequired(true))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('joke')
+    .setDescription('Get a random programming/scripting joke')
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('explain')
+    .setDescription('Ask the AI to explain a piece of code (requires key)')
+    .addStringOption(opt => opt.setName('code').setDescription('The code to explain').setRequired(true))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('rps')
+    .setDescription('Play Rock Paper Scissors against the bot')
+    .addStringOption(opt =>
+      opt.setName('choice')
+        .setDescription('Your choice')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Rock', value: 'rock' },
+          { name: 'Paper', value: 'paper' },
+          { name: 'Scissors', value: 'scissors' }
+        )
+    )
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('dm')
+    .setDescription('[OWNER] Send a DM to a user as the bot')
+    .addStringOption(opt => opt.setName('userid').setDescription('User ID to DM').setRequired(true))
+    .addStringOption(opt => opt.setName('message').setDescription('Message to send').setRequired(true))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('broadcast')
+    .setDescription('[OWNER] Broadcast a message to all servers the bot is in')
+    .addStringOption(opt => opt.setName('message').setDescription('Message to broadcast').setRequired(true))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('maintenance')
+    .setDescription('[OWNER] Toggle maintenance mode (disables /askai for users)')
+    .addStringOption(opt =>
+      opt.setName('status')
+        .setDescription('on or off')
+        .setRequired(true)
+        .addChoices(
+          { name: 'On', value: 'on' },
+          { name: 'Off', value: 'off' }
+        )
+    )
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('clearkeys')
+    .setDescription('[OWNER] Delete all unused keys')
+    .setDMPermission(true),
 ];
 
 async function registerCommands() {
@@ -191,12 +279,11 @@ client.on('interactionCreate', async interaction => {
   if (commandName === 'about') {
     const embed = new EmbedBuilder()
       .setTitle('AI Scripting Bot')
-      .setDescription('A powerful AI assistant focused on scripting & coding, powered by Gemini.')
+      .setDescription('A powerful AI assistant focused on scripting & coding. Works in DMs and servers.')
       .setColor(0x5865F2)
       .addFields(
         { name: 'Commands', value: 'Use `/help` to see all available commands.' },
-        { name: 'Access', value: 'Use `/redeem` with a valid key to unlock `/askai`.' },
-        { name: 'Powered by', value: 'Google Gemini' }
+        { name: 'Access', value: 'Use `/redeem` with a valid key to unlock `/askai` and `/explain`.' },
       )
       .setFooter({ text: 'Works in DMs and servers' });
     return interaction.reply({ embeds: [embed], ephemeral: true });
@@ -205,19 +292,31 @@ client.on('interactionCreate', async interaction => {
   if (commandName === 'help') {
     const userCommands = [
       '`/scan [user]` — Get public info about a Discord user',
+      '`/avatar [user]` — Show a user\'s avatar',
       '`/askai [question]` — Ask the AI a question (key required)',
+      '`/explain [code]` — AI explains a piece of code (key required)',
       '`/redeem [key]` — Redeem a one-time key to unlock AI',
       '`/config [setting] [value]` — Configure AI behaviour',
       '`/myconfig` — View your current AI settings',
+      '`/ping` — Check bot latency',
+      '`/8ball [question]` — Ask the magic 8 ball',
+      '`/coinflip` — Flip a coin',
+      '`/rps [choice]` — Rock Paper Scissors',
+      '`/joke` — Get a random dev joke',
+      '`/roast [user]` — AI roasts someone',
       '`/about` — About this bot',
       '`/help` — Show this message',
     ];
     const ownerCommands = [
       '`/key-gen [amount]` — Generate one-time keys',
       '`/keys` — View all keys & status',
+      '`/clearkeys` — Delete all unused keys',
       '`/blacklist [userid]` — Blacklist a user from AI',
       '`/remove [userid]` — Remove user from blacklist',
       '`/revoke [userid]` — Revoke a user\'s access',
+      '`/dm [userid] [message]` — DM a user as the bot',
+      '`/broadcast [message]` — Send message to all servers',
+      '`/maintenance [on/off]` — Toggle maintenance mode',
       '`/stats` — Bot statistics',
     ];
     const embed = new EmbedBuilder()
@@ -289,6 +388,9 @@ client.on('interactionCreate', async interaction => {
     }
     if (!isAuthorized(user.id) && !isOwner(user.id)) {
       return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
+    }
+    if (maintenanceMode && !isOwner(user.id)) {
+      return interaction.reply({ content: 'The bot is currently in maintenance mode. Try again later.', ephemeral: true });
     }
 
     const question = interaction.options.getString('question');
@@ -455,8 +557,204 @@ client.on('interactionCreate', async interaction => {
         { name: 'Keys Used', value: `${usedKeys}`, inline: true },
         { name: 'Authorized Users', value: `${authorizedUsers}`, inline: true },
         { name: 'Blacklisted Users', value: `${blacklisted}`, inline: true },
+        { name: 'Maintenance Mode', value: maintenanceMode ? 'ON' : 'OFF', inline: true },
       );
     return interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+
+  if (commandName === 'ping') {
+    const sent = await interaction.deferReply({ fetchReply: true });
+    const latency = sent.createdTimestamp - interaction.createdTimestamp;
+    const wsLatency = client.ws.ping;
+    const embed = new EmbedBuilder()
+      .setTitle('Pong!')
+      .setColor(0x57F287)
+      .addFields(
+        { name: 'Roundtrip', value: `${latency}ms`, inline: true },
+        { name: 'WebSocket', value: `${wsLatency}ms`, inline: true }
+      );
+    return interaction.editReply({ embeds: [embed] });
+  }
+
+  if (commandName === 'avatar') {
+    const target = interaction.options.getUser('user') || user;
+    const fetched = await client.users.fetch(target.id, { force: true });
+    const avatarUrl = fetched.displayAvatarURL({ size: 1024, dynamic: true });
+    const embed = new EmbedBuilder()
+      .setTitle(`${fetched.username}'s Avatar`)
+      .setImage(avatarUrl)
+      .setColor(0x5865F2)
+      .setDescription(`[Open in browser](${avatarUrl})`);
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  if (commandName === '8ball') {
+    const responses = [
+      'It is certain.', 'It is decidedly so.', 'Without a doubt.', 'Yes, definitely.',
+      'You may rely on it.', 'As I see it, yes.', 'Most likely.', 'Outlook good.',
+      'Yes.', 'Signs point to yes.', 'Reply hazy, try again.', 'Ask again later.',
+      'Better not tell you now.', 'Cannot predict now.', 'Concentrate and ask again.',
+      "Don't count on it.", 'My reply is no.', 'My sources say no.',
+      'Outlook not so good.', 'Very doubtful.'
+    ];
+    const question = interaction.options.getString('question');
+    const answer = responses[Math.floor(Math.random() * responses.length)];
+    const embed = new EmbedBuilder()
+      .setTitle('🎱 Magic 8 Ball')
+      .setColor(0x2C2F33)
+      .addFields(
+        { name: 'Question', value: question },
+        { name: 'Answer', value: `*${answer}*` }
+      );
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  if (commandName === 'coinflip') {
+    const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
+    const embed = new EmbedBuilder()
+      .setTitle('Coin Flip')
+      .setDescription(`**${result}!**`)
+      .setColor(result === 'Heads' ? 0xF1C40F : 0x95A5A6);
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  if (commandName === 'rps') {
+    const choices = ['rock', 'paper', 'scissors'];
+    const botChoice = choices[Math.floor(Math.random() * 3)];
+    const userChoice = interaction.options.getString('choice');
+    const emoji = { rock: '🪨', paper: '📄', scissors: '✂️' };
+
+    let result;
+    if (userChoice === botChoice) result = "It's a tie!";
+    else if (
+      (userChoice === 'rock' && botChoice === 'scissors') ||
+      (userChoice === 'paper' && botChoice === 'rock') ||
+      (userChoice === 'scissors' && botChoice === 'paper')
+    ) result = 'You win!';
+    else result = 'I win!';
+
+    const embed = new EmbedBuilder()
+      .setTitle('Rock Paper Scissors')
+      .setColor(result === 'You win!' ? 0x57F287 : result === 'I win!' ? 0xED4245 : 0xFEE75C)
+      .addFields(
+        { name: 'Your choice', value: `${emoji[userChoice]} ${userChoice}`, inline: true },
+        { name: 'My choice', value: `${emoji[botChoice]} ${botChoice}`, inline: true },
+        { name: 'Result', value: `**${result}**`, inline: false }
+      );
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  if (commandName === 'joke') {
+    await interaction.deferReply();
+    try {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: 'You are a comedian who tells short, funny programming and scripting jokes. Tell one joke only, keep it under 3 sentences.' },
+          { role: 'user', content: 'Tell me a programming joke.' }
+        ],
+        max_tokens: 200,
+      });
+      const jokeText = completion.choices[0].message.content;
+      const embed = new EmbedBuilder()
+        .setTitle('😂 Dev Joke')
+        .setDescription(jokeText)
+        .setColor(0xFEE75C);
+      return interaction.editReply({ embeds: [embed] });
+    } catch {
+      return interaction.editReply({ content: 'Could not fetch a joke right now. Try again later.' });
+    }
+  }
+
+  if (commandName === 'roast') {
+    await interaction.deferReply();
+    const target = interaction.options.getUser('user');
+    try {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: 'You are a witty roast comedian. Keep it funny, not mean-spirited or offensive. No swearing. 2-3 sentences max.' },
+          { role: 'user', content: `Roast a Discord user named "${target.username}".` }
+        ],
+        max_tokens: 200,
+      });
+      const roastText = completion.choices[0].message.content;
+      const embed = new EmbedBuilder()
+        .setTitle(`🔥 Roasting ${target.username}`)
+        .setDescription(roastText)
+        .setThumbnail(target.displayAvatarURL())
+        .setColor(0xED4245);
+      return interaction.editReply({ embeds: [embed] });
+    } catch {
+      return interaction.editReply({ content: 'Could not generate a roast right now. Try again later.' });
+    }
+  }
+
+  if (commandName === 'explain') {
+    if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
+    if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
+    if (maintenanceMode && !isOwner(user.id)) return interaction.reply({ content: 'The bot is currently in maintenance mode. Try again later.', ephemeral: true });
+
+    const code = interaction.options.getString('code');
+    await interaction.deferReply();
+    try {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: 'You are a coding expert. Explain the provided code clearly and concisely, covering what it does, how it works, and any notable patterns. Always use Discord markdown codeblocks when referencing code.' },
+          { role: 'user', content: `Explain this code:\n\`\`\`\n${code}\n\`\`\`` }
+        ],
+        max_tokens: 1200,
+      });
+      const text = completion.choices[0].message.content;
+      const embed = new EmbedBuilder()
+        .setTitle('Code Explanation')
+        .setColor(0x5865F2)
+        .setDescription(text.length > 4096 ? text.slice(0, 4090) + '...' : text);
+      return interaction.editReply({ embeds: [embed] });
+    } catch {
+      return interaction.editReply({ content: 'Could not explain the code right now. Try again later.' });
+    }
+  }
+
+  if (commandName === 'dm') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    const targetId = interaction.options.getString('userid');
+    const message = interaction.options.getString('message');
+    try {
+      const targetUser = await client.users.fetch(targetId);
+      await targetUser.send(message);
+      return interaction.reply({ content: `Message sent to \`${targetUser.username}\`.`, ephemeral: true });
+    } catch {
+      return interaction.reply({ content: `Could not send DM to \`${targetId}\`. They may have DMs disabled.`, ephemeral: true });
+    }
+  }
+
+  if (commandName === 'broadcast') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    const message = interaction.options.getString('message');
+    await interaction.deferReply({ ephemeral: true });
+    let sent = 0;
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        const channel = guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(guild.members.me)?.has('SendMessages'));
+        if (channel) { await channel.send(message); sent++; }
+      } catch {}
+    }
+    return interaction.editReply({ content: `Broadcast sent to **${sent}** server(s).` });
+  }
+
+  if (commandName === 'maintenance') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    const status = interaction.options.getString('status');
+    maintenanceMode = status === 'on';
+    return interaction.reply({ content: `Maintenance mode is now **${maintenanceMode ? 'ON' : 'OFF'}**. ${maintenanceMode ? 'Only you can use /askai.' : 'All users can use /askai.'}`, ephemeral: true });
+  }
+
+  if (commandName === 'clearkeys') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    const result = db.prepare('DELETE FROM keys WHERE used = 0').run();
+    return interaction.reply({ content: `Deleted **${result.changes}** unused key(s).`, ephemeral: true });
   }
 });
 
