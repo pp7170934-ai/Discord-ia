@@ -1,3 +1,6 @@
+const keepAlive = require('./keep_alive');
+keepAlive();
+
 const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField, ApplicationCommandOptionType } = require('discord.js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Database = require('better-sqlite3');
