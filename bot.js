@@ -2,16 +2,15 @@ const keepAlive = require('./keep_alive');
 keepAlive();
 
 const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField, ApplicationCommandOptionType } = require('discord.js');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const OpenAI = require('openai');
 const Database = require('better-sqlite3');
 const { v4: uuidv4 } = require('uuid');
 
 const OWNER_ID = process.env.OWNER_ID || '1397488831514808341';
 const TOKEN = process.env.DISCORD_TOKEN;
-const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
 const db = new Database('bot.db');
-const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS keys (
@@ -299,9 +298,15 @@ client.on('interactionCreate', async interaction => {
       const config = getUserConfig(user.id);
       const { system, question: q } = buildAIPrompt(config, question);
 
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash', systemInstruction: system });
-      const result = await model.generateContent(q);
-      const text = result.response.text();
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: q }
+        ],
+        max_tokens: 1500,
+      });
+      const text = completion.choices[0].message.content;
 
       const chunks = [];
       let remaining = text;
@@ -315,7 +320,7 @@ client.on('interactionCreate', async interaction => {
         .setColor(0x5865F2)
         .setAuthor({ name: `Question by ${user.username}`, iconURL: user.displayAvatarURL() })
         .setDescription(chunks[0])
-        .setFooter({ text: 'Powered by Gemini' });
+        .setFooter({ text: 'Powered by OpenAI' });
 
       await interaction.editReply({ embeds: [embed] });
 
