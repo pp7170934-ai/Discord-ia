@@ -2,7 +2,7 @@ const keepAlive = require('./keep_alive');
 keepAlive();
 
 const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField, ApplicationCommandOptionType } = require('discord.js');
-const OpenAI = require('openai');
+const Groq = require('groq-sdk');
 const Database = require('better-sqlite3');
 const { v4: uuidv4 } = require('uuid');
 
@@ -10,7 +10,7 @@ const OWNER_ID = process.env.OWNER_ID || '1397488831514808341';
 const TOKEN = process.env.DISCORD_TOKEN;
 
 const db = new Database('bot.db');
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS keys (
@@ -298,8 +298,8 @@ client.on('interactionCreate', async interaction => {
       const config = getUserConfig(user.id);
       const { system, question: q } = buildAIPrompt(config, question);
 
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: q }
@@ -320,7 +320,7 @@ client.on('interactionCreate', async interaction => {
         .setColor(0x5865F2)
         .setAuthor({ name: `Question by ${user.username}`, iconURL: user.displayAvatarURL() })
         .setDescription(chunks[0])
-        .setFooter({ text: 'Powered by OpenAI' });
+        .setFooter({ text: 'Powered by Groq • llama-3.3-70b' });
 
       await interaction.editReply({ embeds: [embed] });
 
