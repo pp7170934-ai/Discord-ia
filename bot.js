@@ -231,8 +231,13 @@ async function registerCommands() {
   try {
     console.log('Registering slash commands...');
     const clientId = client.user.id;
-    await rest.put(Routes.applicationCommands(clientId), { body: commands.map(c => c.toJSON()) });
-    console.log('Slash commands registered globally.');
+    const commandsJson = commands.map(c => ({
+      ...c.toJSON(),
+      integration_types: [0, 1],
+      contexts: [0, 1, 2],
+    }));
+    await rest.put(Routes.applicationCommands(clientId), { body: commandsJson });
+    console.log('Slash commands registered globally with DM support.');
   } catch (err) {
     console.error('Failed to register commands:', err);
   }
