@@ -768,7 +768,6 @@ if (commandName === 'broadcast') {
         const result = db.prepare('DELETE FROM keys WHERE used = 0').run();
         return interaction.reply({ content: `Deleted **${result.changes}** unused key(s).`, ephemeral: true });
     }
-  }
 });
 
 client.login(TOKEN).catch(err => {
