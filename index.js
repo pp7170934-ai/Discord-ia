@@ -178,55 +178,10 @@ const commands = [
     .setDMPermission(true),
 
   new SlashCommandBuilder()
-    .setName('8ball')
-    .setDescription('Ask the magic 8 ball a question')
-    .addStringOption(opt => opt.setName('question').setDescription('Your yes/no question').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('coinflip')
-    .setDescription('Flip a coin')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('roast')
-    .setDescription('Get the AI to roast someone')
-    .addUserOption(opt => opt.setName('user').setDescription('Who to roast').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('joke')
-    .setDescription('Get a random programming/scripting joke')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
     .setName('explain')
     .setDescription('Ask the AI to explain a piece of code (requires key)')
     .addStringOption(opt => opt.setName('code').setDescription('The code to explain').setRequired(true))
     .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('rps')
-    .setDescription('Play Rock Paper Scissors against the bot')
-    .addStringOption(opt =>
-      opt.setName('choice')
-        .setDescription('Your choice')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Rock', value: 'rock' },
-          { name: 'Paper', value: 'paper' },
-          { name: 'Scissors', value: 'scissors' }
-        )
-    )
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('dm')
-    .setDescription('[OWNER] Send a DM to a user as the bot')
-    .addStringOption(opt => opt.setName('userid').setDescription('User ID to DM').setRequired(true))
-    .addStringOption(opt => opt.setName('message').setDescription('Message to send').setRequired(true))
-    .setDefaultMemberPermissions(0)
-    .setDMPermission(false),
 
   new SlashCommandBuilder()
     .setName('broadcast')
@@ -275,12 +230,6 @@ const commands = [
     .setName('ranks')
     .setDescription('View all users and their rank (Owner, Admin, Authorized)')
     .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('check')
-    .setDescription('[OWNER] Scan the server for external app integrations and warn the server owner')
-    .setDefaultMemberPermissions(0)
-    .setDMPermission(false),
 
   new SlashCommandBuilder()
     .setName('hierarchy')
@@ -414,11 +363,6 @@ client.on('interactionCreate', async interaction => {
       '`/config [setting] [value]` — Configure AI behaviour',
       '`/myconfig` — View your current AI settings',
       '`/ping` — Check bot latency',
-      '`/8ball [question]` — Ask the magic 8 ball',
-      '`/coinflip` — Flip a coin',
-      '`/rps [choice]` — Rock Paper Scissors',
-      '`/joke` — Get a random dev joke',
-      '`/roast [user]` — AI roasts someone',
       '`/hierarchy [rbx_file]` — Parse an RBXM/RBXL file and show its instance tree',
       '`/about` — About this bot',
       '`/help` — Show this message',
@@ -430,7 +374,6 @@ client.on('interactionCreate', async interaction => {
       '`/blacklist [userid]` — Blacklist a user from AI',
       '`/remove [userid]` — Remove user from blacklist',
       '`/revoke [userid]` — Revoke a user\'s access',
-      '`/dm [userid] [message]` — DM a user as the bot',
       '`/broadcast [message]` — Send message to all servers',
       '`/maintenance [on/off]` — Toggle maintenance mode',
       '`/stats` — Bot statistics',
@@ -733,108 +676,6 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ embeds: [embed] });
   }
 
-  if (commandName === '8ball') {
-    const responses = [
-      'It is certain.', 'It is decidedly so.', 'Without a doubt.', 'Yes, definitely.',
-      'You may rely on it.', 'As I see it, yes.', 'Most likely.', 'Outlook good.',
-      'Yes.', 'Signs point to yes.', 'Reply hazy, try again.', 'Ask again later.',
-      'Better not tell you now.', 'Cannot predict now.', 'Concentrate and ask again.',
-      "Don't count on it.", 'My reply is no.', 'My sources say no.',
-      'Outlook not so good.', 'Very doubtful.'
-    ];
-    const question = interaction.options.getString('question');
-    const answer = responses[Math.floor(Math.random() * responses.length)];
-    const embed = new EmbedBuilder()
-      .setTitle('🎱 Magic 8 Ball')
-      .setColor(0x2C2F33)
-      .addFields(
-        { name: 'Question', value: question },
-        { name: 'Answer', value: `*${answer}*` }
-      );
-    return interaction.reply({ embeds: [embed] });
-  }
-
-  if (commandName === 'coinflip') {
-    const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
-    const embed = new EmbedBuilder()
-      .setTitle('Coin Flip')
-      .setDescription(`**${result}!**`)
-      .setColor(result === 'Heads' ? 0xF1C40F : 0x95A5A6);
-    return interaction.reply({ embeds: [embed] });
-  }
-
-  if (commandName === 'rps') {
-    const choices = ['rock', 'paper', 'scissors'];
-    const botChoice = choices[Math.floor(Math.random() * 3)];
-    const userChoice = interaction.options.getString('choice');
-    const emoji = { rock: '🪨', paper: '📄', scissors: '✂️' };
-
-    let result;
-    if (userChoice === botChoice) result = "It's a tie!";
-    else if (
-      (userChoice === 'rock' && botChoice === 'scissors') ||
-      (userChoice === 'paper' && botChoice === 'rock') ||
-      (userChoice === 'scissors' && botChoice === 'paper')
-    ) result = 'You win!';
-    else result = 'I win!';
-
-    const embed = new EmbedBuilder()
-      .setTitle('Rock Paper Scissors')
-      .setColor(result === 'You win!' ? 0x57F287 : result === 'I win!' ? 0xED4245 : 0xFEE75C)
-      .addFields(
-        { name: 'Your choice', value: `${emoji[userChoice]} ${userChoice}`, inline: true },
-        { name: 'My choice', value: `${emoji[botChoice]} ${botChoice}`, inline: true },
-        { name: 'Result', value: `**${result}**`, inline: false }
-      );
-    return interaction.reply({ embeds: [embed] });
-  }
-
-  if (commandName === 'joke') {
-    await interaction.deferReply();
-    try {
-      const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'You are a comedian who tells short, funny programming and scripting jokes. Tell one joke only, keep it under 3 sentences.' },
-          { role: 'user', content: 'Tell me a programming joke.' }
-        ],
-        max_tokens: 200,
-      });
-      const jokeText = completion.choices[0].message.content;
-      const embed = new EmbedBuilder()
-        .setTitle('😂 Dev Joke')
-        .setDescription(jokeText)
-        .setColor(0xFEE75C);
-      return interaction.editReply({ embeds: [embed] });
-    } catch {
-      return interaction.editReply({ content: 'Could not fetch a joke right now. Try again later.' });
-    }
-  }
-
-  if (commandName === 'roast') {
-    await interaction.deferReply();
-    const target = interaction.options.getUser('user');
-    try {
-      const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'You are a witty roast comedian. Keep it funny, not mean-spirited or offensive. No swearing. 2-3 sentences max.' },
-          { role: 'user', content: `Roast a Discord user named "${target.username}".` }
-        ],
-        max_tokens: 200,
-      });
-      const roastText = completion.choices[0].message.content;
-      const embed = new EmbedBuilder()
-        .setTitle(`🔥 Roasting ${target.username}`)
-        .setDescription(roastText)
-        .setThumbnail(target.displayAvatarURL())
-        .setColor(0xED4245);
-      return interaction.editReply({ embeds: [embed] });
-    } catch {
-      return interaction.editReply({ content: 'Could not generate a roast right now. Try again later.' });
-    }
-  }
-
   if (commandName === 'explain') {
     if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
     if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
@@ -859,19 +700,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.editReply({ embeds: [embed] });
     } catch {
       return interaction.editReply({ content: 'Could not explain the code right now. Try again later.' });
-    }
-  }
-
-  if (commandName === 'dm') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const targetId = interaction.options.getString('userid');
-    const message = interaction.options.getString('message');
-    try {
-      const targetUser = await client.users.fetch(targetId);
-      await targetUser.send(message);
-      return interaction.reply({ content: `Message sent to \`${targetUser.username}\`.`, ephemeral: true });
-    } catch {
-      return interaction.reply({ content: `Could not send DM to \`${targetId}\`. They may have DMs disabled.`, ephemeral: true });
     }
   }
 
@@ -1035,42 +863,6 @@ if (commandName === 'broadcast') {
     } catch (err) {
       const msg = err.message || 'Unknown error';
       return interaction.editReply({ content: `Failed to parse the file: ${msg}` });
-    }
-  }
-
-  if (commandName === 'check') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    if (!interaction.guild) return interaction.reply({ content: 'This command must be used inside a server.', ephemeral: true });
-
-    await interaction.deferReply({ ephemeral: true });
-
-    let integrations;
-    try {
-      integrations = await interaction.guild.fetchIntegrations();
-    } catch {
-      return interaction.editReply({ content: 'Failed to fetch integrations. Make sure the bot has the **Manage Server** permission.' });
-    }
-
-    // Filter for external application (bot) integrations
-    const externalApps = integrations.filter(i => i.type === 'discord');
-
-    if (externalApps.size === 0) {
-      return interaction.editReply({ content: '✅ No external app integrations found in this server. Looks clean!' });
-    }
-
-    // Build list of found apps
-    const appList = externalApps.map(i => `• **${i.application?.name || i.name || 'Unknown App'}**`).join('\n');
-
-    // DM the server owner
-    const warningMessage = `⚠️ **Nyx Security Alert**\n\nNyx have recently scanned your server **${interaction.guild.name}** and found that external apps are enabled on it.\n\n**External apps detected:**\n${appList}\n\nIt is better if you disable or review them to prevent the server from being raided.`;
-
-    try {
-      const guildOwner = await client.users.fetch(interaction.guild.ownerId);
-      await guildOwner.send(warningMessage);
-      logActivity(user.id, user.username, 'check', `Scanned ${interaction.guild.name} — found ${externalApps.size} external app(s), warned owner ${interaction.guild.ownerId}`);
-      return interaction.editReply({ content: `⚠️ Found **${externalApps.size}** external app integration(s). The server owner has been warned via DM.\n\n${appList}` });
-    } catch {
-      return interaction.editReply({ content: `⚠️ Found **${externalApps.size}** external app integration(s), but could not DM the server owner (DMs may be disabled).\n\n${appList}` });
     }
   }
 
