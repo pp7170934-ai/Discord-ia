@@ -993,18 +993,7 @@ if (commandName === 'broadcast') {
       const previewText = previewLines.join('\n') + ((inlineTruncated || parseTruncated) ? '\n...' : '');
       const inlineMsg = previewText + suffix;
 
-      // If nothing was truncated at all → just reply inline, no file needed
-      if (!inlineTruncated && !parseTruncated) {
-        return interaction.editReply({ content: inlineMsg });
-      }
-
-      // Tree is large: show emoji preview inline + full plain-text file attachment
-      const { lines: plainLines } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, null);
-      const plainFull = plainLines.join('\n') + (parseTruncated ? '\n...' : '');
-      const fileContent = `RBXM Hierarchy: ${name}\nInstances: ${numInstances} | Types: ${typeNames.size}\n\n${plainFull}\n\n${flagsLine}`;
-      const file = new AttachmentBuilder(Buffer.from(fileContent, 'utf8'), { name: 'hierarchy.txt' });
-
-      return interaction.editReply({ content: inlineMsg, files: [file] });
+      return interaction.editReply({ content: inlineMsg });
 
     } catch (err) {
       const msg = err.message || 'Unknown error';
