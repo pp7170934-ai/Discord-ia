@@ -99,9 +99,10 @@ function parseRBXM(buf) {
   }
 
   let pos = 14;
+  pos += 2; // uint16 version field (always 0)
   const numTypes = buf.readUInt32LE(pos); pos += 4;
   const numInstances = buf.readUInt32LE(pos); pos += 4;
-  pos += 8;
+  pos += 8; // reserved
 
   const typeNames = new Map();
   const instanceTypes = new Map();
