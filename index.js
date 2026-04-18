@@ -828,7 +828,6 @@ if (commandName === 'broadcast') {
         const result = db.prepare('DELETE FROM keys WHERE used = 0').run();
         return interaction.reply({ content: `Deleted **${result.changes}** unused key(s).`, ephemeral: true });
     }
-});
 
   if (commandName === 'admin-add') {
     if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
@@ -860,6 +859,8 @@ if (commandName === 'broadcast') {
       .setDescription(lines.join('\n').slice(0, 4096));
     return interaction.reply({ embeds: [embed], ephemeral: true });
   }
+
+});
 
 keepAlive();
 client.login(TOKEN).catch(err => {
