@@ -171,7 +171,48 @@ function parseRBXM(buf) {
   return { typeNames, instanceTypes, parentOf, instanceNames, numInstances };
 }
 
-const MAX_LINES = 200;
+const MAX_LINES = 500;
+
+const NAMED_CATEGORIES = new Set([
+  'Script', 'LocalScript', 'ModuleScript',
+  'Part', 'WedgePart', 'CornerWedgePart', 'TrussPart', 'CylinderPart',
+  'UnionOperation', 'MeshPart', 'SpecialMesh',
+  'Model', 'Folder', 'Tool', 'BackpackItem', 'HopperBin',
+  'Workspace', 'Terrain', 'Camera',
+  'ScreenGui', 'Frame', 'ScrollingFrame', 'ViewportFrame',
+  'SurfaceGui', 'BillboardGui',
+  'TextLabel', 'TextButton', 'TextBox',
+  'ImageLabel', 'ImageButton',
+  'RemoteEvent', 'RemoteFunction', 'BindableEvent', 'BindableFunction',
+  'StringValue', 'IntValue', 'NumberValue', 'BoolValue', 'ObjectValue',
+  'Vector3Value', 'CFrameValue', 'Color3Value', 'RayValue',
+  'Animation', 'Animator', 'AnimationController',
+  'Sound', 'SoundGroup',
+  'Players', 'StarterGui', 'StarterPack',
+  'StarterPlayerScripts', 'StarterCharacterScripts',
+  'ReplicatedStorage', 'ServerStorage', 'ServerScriptService',
+  'CoreGui', 'Lighting', 'Chat', 'Teams', 'Team',
+  'SpawnLocation', 'Seat', 'VehicleSeat',
+  'Motor6D', 'Weld', 'WeldConstraint',
+  'HingeConstraint', 'BallSocketConstraint', 'RodConstraint',
+  'BodyPosition', 'BodyVelocity', 'BodyGyro', 'BodyForce',
+  'ClickDetector', 'ProximityPrompt', 'SelectionBox', 'SelectionSphere',
+  'ParticleEmitter', 'Smoke', 'Fire', 'Sparkles', 'Beam', 'Trail',
+  'Decal', 'Texture',
+  'SurfaceLight', 'PointLight', 'SpotLight',
+  'Sky', 'Atmosphere', 'ColorCorrectionEffect', 'BloomEffect', 'BlurEffect',
+  'Humanoid', 'HumanoidDescription', 'CharacterMesh',
+  'Attachment', 'Bone',
+  'Configuration', 'UIListLayout', 'UIGridLayout', 'UIPageLayout',
+  'UITableLayout', 'UIPadding', 'UICorner', 'UIStroke', 'UIAspectRatioConstraint',
+  'UISizeConstraint', 'UITextSizeConstraint',
+  'ForceField', 'Explosion', 'RocketPropulsion',
+  'Script', 'LocalScript', 'ModuleScript',
+]);
+
+function getCategory(className) {
+  return NAMED_CATEGORIES.has(className) ? className : 'Blank';
+}
 
 function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames) {
   const children = new Map();
@@ -183,26 +224,26 @@ function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames) {
   const lines = [];
   let truncated = false;
 
-  function walk(ref, prefix, isLast) {
+  function walk(ref, level) {
     if (lines.length >= MAX_LINES) { truncated = true; return; }
 
     const typeId = instanceTypes.get(ref);
-    const cls = typeId !== undefined ? (typeNames.get(typeId) ?? 'Unknown') : 'Unknown';
-    const name = instanceNames.get(ref);
-    const label = name && name !== cls ? `${cls} ("${name}")` : cls;
+    const className = typeId !== undefined ? (typeNames.get(typeId) ?? 'Unknown') : 'Unknown';
+    const name = instanceNames.get(ref) || className;
+    const category = getCategory(className);
 
-    lines.push(`${prefix}${isLast ? '└── ' : '├── '}${label}`);
+    const indent = level === 0 ? '' : ' '.repeat(level + 1);
+    lines.push(`${indent}:${category}: ${name} [${className}]`);
 
-    const kids = (children.get(ref) || []).sort((a, b) => a - b);
-    const childPrefix = prefix + (isLast ? '    ' : '│   ');
-    for (let i = 0; i < kids.length; i++) {
-      walk(kids[i], childPrefix, i === kids.length - 1);
+    const kids = (children.get(ref) || []);
+    for (const kid of kids) {
+      walk(kid, level + 1);
     }
   }
 
-  const roots = (children.get(-1) || []).sort((a, b) => a - b);
-  for (let i = 0; i < roots.length; i++) {
-    walk(roots[i], '', i === roots.length - 1);
+  const roots = children.get(-1) || [];
+  for (const root of roots) {
+    walk(root, 0);
   }
 
   return { lines, truncated };
