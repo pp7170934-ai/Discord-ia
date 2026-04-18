@@ -973,19 +973,26 @@ if (commandName === 'broadcast') {
       const buf = Buffer.from(arrayBuffer);
 
       const { typeNames, instanceTypes, parentOf, instanceNames, numInstances } = parseRBXM(buf);
-      const { lines, truncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emojiConfig);
       const { requiresScore, destructionScore, sandboxingScore } = calculateFlags(typeNames, instanceTypes);
-
       const flagsLine = `flags: requires (score: ${requiresScore})  destruction (score: ${destructionScore})  sandboxing (score: ${sandboxingScore})`;
 
-      const treeText = lines.join('\n') + (truncated ? '\n...' : '');
-      const fullContent = `\`\`\`\n${treeText}\n\`\`\`\n${flagsLine}`;
+      // Always render plain (no emojis) first — used for file output and length check
+      const { lines: plainLines, truncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, null);
+      const plainTree = plainLines.join('\n') + (truncated ? '\n...' : '');
+      const plainInline = `\`\`\`\n${plainTree}\n\`\`\`\n${flagsLine}`;
 
-      if (fullContent.length <= 2000) {
-        return interaction.editReply({ content: fullContent });
+      // Only try emojis for inline display; if it still exceeds 2000 fall back to plain
+      if (plainInline.length <= 2000) {
+        const { lines: emojiLines } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emojiConfig);
+        const emojiTree = emojiLines.join('\n') + (truncated ? '\n...' : '');
+        const emojiContent = emojiTree + '\n' + flagsLine;
+        if (emojiContent.length <= 2000) {
+          return interaction.editReply({ content: emojiContent });
+        }
+        return interaction.editReply({ content: plainInline });
       }
 
-      const plainText = `RBXM Hierarchy: ${name}\nInstances: ${numInstances} | Types: ${typeNames.size}\n\n${treeText}\n\n${flagsLine}`;
+      const plainText = `RBXM Hierarchy: ${name}\nInstances: ${numInstances} | Types: ${typeNames.size}\n\n${plainTree}\n\n${flagsLine}`;
       const file = new AttachmentBuilder(Buffer.from(plainText, 'utf8'), { name: 'hierarchy.txt' });
 
       const embed = new EmbedBuilder()
