@@ -752,10 +752,10 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  if (commandName === 'broadcast') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+  if if (commandName === 'broadcast') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only owner.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true }); // Move this UP
     const message = interaction.options.getString('message');
-    await interaction.deferReply({ ephemeral: true });
     let sent = 0;
     for (const guild of client.guilds.cache.values()) {
       try {
