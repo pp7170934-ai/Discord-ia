@@ -976,36 +976,35 @@ if (commandName === 'broadcast') {
       const { requiresScore, destructionScore, sandboxingScore } = calculateFlags(typeNames, instanceTypes);
       const flagsLine = `flags: requires (score: ${requiresScore})  destruction (score: ${destructionScore})  sandboxing (score: ${sandboxingScore})`;
 
-      // Always render plain (no emojis) first — used for file output and length check
-      const { lines: plainLines, truncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, null);
-      const plainTree = plainLines.join('\n') + (truncated ? '\n...' : '');
-      const plainInline = `\`\`\`\n${plainTree}\n\`\`\`\n${flagsLine}`;
+      // Render with emojis (all lines up to MAX_LINES)
+      const { lines: allLines, truncated: parseTruncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emojiConfig);
 
-      // Only try emojis for inline display; if it still exceeds 2000 fall back to plain
-      if (plainInline.length <= 2000) {
-        const { lines: emojiLines } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emojiConfig);
-        const emojiTree = emojiLines.join('\n') + (truncated ? '\n...' : '');
-        const emojiContent = emojiTree + '\n' + flagsLine;
-        if (emojiContent.length <= 2000) {
-          return interaction.editReply({ content: emojiContent });
-        }
-        return interaction.editReply({ content: plainInline });
+      // Build inline preview: keep adding lines until we'd exceed 1900 chars
+      const CHAR_LIMIT = 1900;
+      const suffix = '\n' + flagsLine;
+      let previewLines = [];
+      let charCount = suffix.length + 4; // +4 for '\n...'
+      let inlineTruncated = false;
+      for (const ln of allLines) {
+        if (charCount + ln.length + 1 > CHAR_LIMIT) { inlineTruncated = true; break; }
+        previewLines.push(ln);
+        charCount += ln.length + 1;
+      }
+      const previewText = previewLines.join('\n') + ((inlineTruncated || parseTruncated) ? '\n...' : '');
+      const inlineMsg = previewText + suffix;
+
+      // If nothing was truncated at all → just reply inline, no file needed
+      if (!inlineTruncated && !parseTruncated) {
+        return interaction.editReply({ content: inlineMsg });
       }
 
-      const plainText = `RBXM Hierarchy: ${name}\nInstances: ${numInstances} | Types: ${typeNames.size}\n\n${plainTree}\n\n${flagsLine}`;
-      const file = new AttachmentBuilder(Buffer.from(plainText, 'utf8'), { name: 'hierarchy.txt' });
+      // Tree is large: show emoji preview inline + full plain-text file attachment
+      const { lines: plainLines } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, null);
+      const plainFull = plainLines.join('\n') + (parseTruncated ? '\n...' : '');
+      const fileContent = `RBXM Hierarchy: ${name}\nInstances: ${numInstances} | Types: ${typeNames.size}\n\n${plainFull}\n\n${flagsLine}`;
+      const file = new AttachmentBuilder(Buffer.from(fileContent, 'utf8'), { name: 'hierarchy.txt' });
 
-      const embed = new EmbedBuilder()
-        .setTitle(`RBXM Hierarchy — ${name}`)
-        .setColor(0x5865F2)
-        .addFields(
-          { name: 'Instances', value: `${numInstances}`, inline: true },
-          { name: 'Types', value: `${typeNames.size}`, inline: true },
-        )
-        .setDescription(`Hierarchy too large to display inline — see attached file.${truncated ? '\n*(Truncated at 500 nodes)*' : ''}\n\n\`${flagsLine}\``)
-        .setFooter({ text: 'RBXM Binary Parser' });
-
-      return interaction.editReply({ embeds: [embed], files: [file] });
+      return interaction.editReply({ content: inlineMsg, files: [file] });
 
     } catch (err) {
       const msg = err.message || 'Unknown error';
