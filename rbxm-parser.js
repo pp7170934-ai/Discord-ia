@@ -174,7 +174,46 @@ function parseRBXM(buf) {
 
 const MAX_LINES = 500;
 
-function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames) {
+const CLASS_TO_EMOJI_KEY = {
+  Part: 'roblox_part', WedgePart: 'roblox_part', CornerWedgePart: 'roblox_part',
+  TrussPart: 'roblox_part', CylinderPart: 'roblox_part', MeshPart: 'roblox_part',
+  UnionOperation: 'roblox_part', SpawnLocation: 'roblox_part',
+  Seat: 'roblox_part', VehicleSeat: 'roblox_part',
+  Folder: 'roblox_folder',
+  Frame: 'roblox_frame', ScrollingFrame: 'roblox_frame', ViewportFrame: 'roblox_frame',
+  ImageLabel: 'roblox_imagelabel', ImageButton: 'roblox_imagelabel',
+  Decal: 'roblox_imagelabel', Texture: 'roblox_imagelabel',
+  PointLight: 'roblox_light', SpotLight: 'roblox_light',
+  SurfaceLight: 'roblox_light', Lighting: 'roblox_light',
+  Sky: 'roblox_light', Atmosphere: 'roblox_light',
+  ScreenGui: 'roblox_screengui', SurfaceGui: 'roblox_screengui',
+  BillboardGui: 'roblox_screengui', StarterGui: 'roblox_screengui', CoreGui: 'roblox_screengui',
+  Model: 'roblox_model',
+  ModuleScript: 'roblox_module',
+  Script: 'roblox_script', ServerScriptService: 'roblox_script',
+  LocalScript: 'roblox_local',
+  StarterPlayerScripts: 'roblox_local', StarterCharacterScripts: 'roblox_local',
+  Sound: 'roblox_sound', SoundGroup: 'roblox_sound',
+  TextLabel: 'roblox_textlabel',
+  TextButton: 'roblox_textbutton',
+  TextBox: 'roblox_textbox',
+  Humanoid: 'roblox_humanoid', HumanoidDescription: 'roblox_humanoid',
+  Tool: 'roblox_tool', BackpackItem: 'roblox_tool', HopperBin: 'roblox_tool',
+  RemoteEvent: 'roblox_remote', RemoteFunction: 'roblox_remote',
+  BindableEvent: 'roblox_remote', BindableFunction: 'roblox_remote',
+  Animation: 'roblox_anim', Animator: 'roblox_anim', AnimationController: 'roblox_anim',
+  Camera: 'roblox_camera',
+};
+
+function getEmoji(className, emojiConfig) {
+  if (!emojiConfig) return '';
+  const key = CLASS_TO_EMOJI_KEY[className] || 'roblox_blank';
+  const id = emojiConfig[key];
+  if (!id) return '';
+  return `<:${key}:${id}> `;
+}
+
+function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emojiConfig = null) {
   const children = new Map();
   for (const [child, parent] of parentOf) {
     if (!children.has(parent)) children.set(parent, []);
@@ -191,8 +230,9 @@ function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames) {
     const className = typeId !== undefined ? (typeNames.get(typeId) ?? 'Unknown') : 'Unknown';
     const name = instanceNames.get(ref) || className;
     const indent = level === 0 ? '' : ' '.repeat(level + 1);
+    const icon = getEmoji(className, emojiConfig);
 
-    lines.push(`${indent}${name} [${className}]`);
+    lines.push(`${indent}${icon}${name} [${className}]`);
 
     const kids = children.get(ref) || [];
     for (const kid of kids) {
