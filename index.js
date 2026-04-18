@@ -778,9 +778,11 @@ client.on('interactionCreate', async interaction => {
     const result = db.prepare('DELETE FROM keys WHERE used = 0').run();
     return interaction.reply({ content: `Deleted **${result.changes}** unused key(s).`, ephemeral: true });
   }
-}); // This one stays here to close the interaction event
+}
+});
 
 client.login(TOKEN).catch(err => {
     console.error('Failed to login:', err.message);
     process.exit(1);
+});
 
