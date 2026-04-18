@@ -756,18 +756,18 @@ client.on('interactionCreate', async interaction => {
   
 
   if (commandName === 'maintenance') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const status = interaction.options.getString('status');
-    maintenanceMode = status === 'on';
-    return interaction.reply({ content: `Maintenance mode is now **${maintenanceMode ? 'ON' : 'OFF'}**. ${maintenanceMode ? 'Only you can use /askai.' : 'All users can use /askai.'}`, ephemeral: true });
-  }
+        if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+        const status = interaction.options.getString('status');
+        maintenanceMode = status === 'on';
+        return interaction.reply({ content: `Maintenance mode is now **${maintenanceMode ? 'ON' : 'OFF'}**.` });
+    }
 
-  if (commandName === 'clearkeys') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const result = db.prepare('DELETE FROM keys WHERE used = 0').run();
-    return interaction.reply({ content: `Deleted **${result.changes}** unused key(s).`, ephemeral: true });
+    if (commandName === 'clearkeys') {
+        if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+        const result = db.prepare('DELETE FROM keys WHERE used = 0').run();
+        return interaction.reply({ content: `Deleted **${result.changes}** unused key(s).`, ephemeral: true });
+    }
   }
-}
 });
 
 client.login(TOKEN).catch(err => {
