@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const CONFIG_FILE = path.join(__dirname, 'emoji-config.json');
+const CONFIG_VERSION = 2; // bump to force emoji recreation
 
 // ── Minimal PNG encoder ─────────────────────────────────────────────────────
 
@@ -421,6 +422,22 @@ function makeIcon(name) {
   return px;
 }
 
+// ── 2× upscale (64 → 128px) ─────────────────────────────────────────────────
+
+function scaleUp2x(pixels) {
+  const src = 64, dst = 128;
+  const out = new Array(dst * dst).fill(null).map(() => [0, 0, 0, 0]);
+  for (let y = 0; y < src; y++)
+    for (let x = 0; x < src; x++) {
+      const p = pixels[y * src + x];
+      out[(y * 2) * dst + (x * 2)]         = p;
+      out[(y * 2) * dst + (x * 2 + 1)]     = p;
+      out[(y * 2 + 1) * dst + (x * 2)]     = p;
+      out[(y * 2 + 1) * dst + (x * 2 + 1)] = p;
+    }
+  return out;
+}
+
 // ── Emoji names list ────────────────────────────────────────────────────────
 
 const EMOJI_NAMES = [
@@ -474,9 +491,14 @@ function discordRequest(method, path, body, token) {
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function setupEmojis(token) {
+  // Check if saved config is already at current version
   if (fs.existsSync(CONFIG_FILE)) {
-    console.log('[emojis] emoji-config.json already exists, skipping setup.');
-    return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    if (saved._version === CONFIG_VERSION) {
+      console.log(`[emojis] Config v${CONFIG_VERSION} found, skipping setup.`);
+      return saved;
+    }
+    console.log(`[emojis] Config version mismatch (found ${saved._version}, need ${CONFIG_VERSION}), re-running setup...`);
   }
 
   console.log('[emojis] Setting up application emojis...');
@@ -486,21 +508,23 @@ async function setupEmojis(token) {
   if (!appId) throw new Error('Could not get application ID — check DISCORD_TOKEN');
   console.log('[emojis] App ID:', appId);
 
-  const existing = await discordRequest('GET', `/applications/${appId}/emojis`, null, token);
-  const existingMap = {};
-  for (const e of (existing.body.items || [])) existingMap[e.name] = e.id;
+  // Load existing emojis and delete any stale roblox_* ones so we can recreate fresh
+  const existingRes = await discordRequest('GET', `/applications/${appId}/emojis`, null, token);
+  const existingList = existingRes.body.items || [];
+  for (const e of existingList) {
+    if (e.name.startsWith('roblox_')) {
+      await discordRequest('DELETE', `/applications/${appId}/emojis/${e.id}`, {}, token);
+      console.log(`[emojis] Deleted old ${e.name}`);
+      await sleep(400);
+    }
+  }
 
-  const config = {};
+  const config = { _version: CONFIG_VERSION };
 
   for (const name of EMOJI_NAMES) {
-    if (existingMap[name]) {
-      console.log(`[emojis] ${name} already exists (${existingMap[name]})`);
-      config[name] = existingMap[name];
-      continue;
-    }
-
-    const pixels = makeIcon(name);
-    const png = makePNG(pixels, 64);
+    // 64×64 art → upscale to 128×128 (Discord minimum)
+    const pixels128 = scaleUp2x(makeIcon(name));
+    const png = makePNG(pixels128, 128);
     const b64 = `data:image/png;base64,${png.toString('base64')}`;
 
     const r = await discordRequest('POST', `/applications/${appId}/emojis`, { name, image: b64 }, token);
