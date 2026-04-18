@@ -752,7 +752,7 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  if if (commandName === 'broadcast') {
+  if (commandName === 'broadcast') {
     if (!isOwner(user.id)) return interaction.reply({ content: 'Only owner.', ephemeral: true });
     await interaction.deferReply({ ephemeral: true }); // Move this UP
     const message = interaction.options.getString('message');
@@ -764,7 +764,7 @@ client.on('interactionCreate', async interaction => {
       } catch {}
     }
     return interaction.editReply({ content: `Broadcast sent to **${sent}** server(s).` });
-  }
+  
 
   if (commandName === 'maintenance') {
     if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
