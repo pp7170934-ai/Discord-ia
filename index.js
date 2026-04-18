@@ -258,6 +258,11 @@ const commands = [
     .setDescription('[OWNER/ADMIN] View recent activity logs')
     .addIntegerOption(opt => opt.setName('limit').setDescription('Number of entries (default 10, max 25)').setMinValue(1).setMaxValue(25))
     .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('ranks')
+    .setDescription('View all users and their rank (Owner, Admin, Authorized)')
+    .setDMPermission(true),
 ];
 
 async function registerCommands() {
@@ -858,6 +863,60 @@ if (commandName === 'broadcast') {
       .setColor(0x5865F2)
       .setDescription(lines.join('\n').slice(0, 4096));
     return interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+
+  if (commandName === 'ranks') {
+    await interaction.deferReply({ ephemeral: true });
+
+    // Helper to fetch a display name from Discord
+    async function fetchName(id) {
+      try {
+        const u = await client.users.fetch(id);
+        return u.username;
+      } catch {
+        return 'Unknown User';
+      }
+    }
+
+    // Owner
+    const ownerName = await fetchName(OWNER_ID);
+    const ownerLine = `👑 **${ownerName}** — \`${OWNER_ID}\``;
+
+    // Admins
+    const adminRows = db.prepare('SELECT user_id FROM admins').all();
+    let adminLines = '— _None_';
+    if (adminRows.length) {
+      const resolved = await Promise.all(adminRows.map(async r => {
+        const name = await fetchName(r.user_id);
+        return `🛡️ **${name}** — \`${r.user_id}\``;
+      }));
+      adminLines = resolved.join('\n');
+    }
+
+    // Authorized users (excluding owner and admins)
+    const adminIds = new Set(adminRows.map(r => r.user_id));
+    const userRows = db.prepare('SELECT user_id FROM authorized_users').all()
+      .filter(r => r.user_id !== OWNER_ID && !adminIds.has(r.user_id));
+    let userLines = '— _None_';
+    if (userRows.length) {
+      const resolved = await Promise.all(userRows.map(async r => {
+        const name = await fetchName(r.user_id);
+        return `👤 **${name}** — \`${r.user_id}\``;
+      }));
+      userLines = resolved.join('\n');
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle('Bot Ranks')
+      .setColor(0x5865F2)
+      .addFields(
+        { name: '👑 Owner', value: ownerLine },
+        { name: `🛡️ Admins (${adminRows.length})`, value: adminLines.slice(0, 1024) },
+        { name: `👤 Authorized Users (${userRows.length})`, value: userLines.slice(0, 1024) }
+      )
+      .setFooter({ text: 'Only authorized users can use /askai' });
+
+    return interaction.editReply({ embeds: [embed] });
   }
 
 });
