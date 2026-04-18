@@ -174,84 +174,6 @@ function parseRBXM(buf) {
 
 const MAX_LINES = 500;
 
-const ICONS = {
-  ModuleScript:            '🟪',
-  Script:                  '📄',
-  LocalScript:             '🟦',
-  Folder:                  '📁',
-  Model:                   '🗂️',
-  Part:                    '📦',
-  WedgePart:               '📦',
-  CornerWedgePart:         '📦',
-  TrussPart:               '📦',
-  CylinderPart:            '📦',
-  MeshPart:                '📦',
-  UnionOperation:          '📦',
-  SpawnLocation:           '📦',
-  Seat:                    '📦',
-  VehicleSeat:             '📦',
-  ScreenGui:               '🖥️',
-  SurfaceGui:              '🖥️',
-  BillboardGui:            '🖥️',
-  Frame:                   '⬜',
-  ScrollingFrame:          '⬜',
-  ViewportFrame:           '⬜',
-  TextLabel:               '🔤',
-  TextButton:              '🔘',
-  TextBox:                 '📝',
-  ImageLabel:              '🖼️',
-  ImageButton:             '🖼️',
-  RemoteEvent:             '📡',
-  RemoteFunction:          '📡',
-  BindableEvent:           '🔔',
-  BindableFunction:        '🔔',
-  Sound:                   '🔊',
-  SoundGroup:              '🔊',
-  Tool:                    '🔧',
-  Humanoid:                '👤',
-  HumanoidDescription:     '👤',
-  Camera:                  '📷',
-  Animation:               '🎬',
-  Animator:                '🎬',
-  AnimationController:     '🎬',
-  Workspace:               '🌍',
-  Terrain:                 '🌍',
-  Players:                 '👥',
-  StarterGui:              '🖥️',
-  StarterPack:             '🎒',
-  StarterPlayerScripts:    '🟦',
-  StarterCharacterScripts: '🟦',
-  ReplicatedStorage:       '🗄️',
-  ServerStorage:           '🗄️',
-  ServerScriptService:     '📄',
-  CoreGui:                 '🖥️',
-  Lighting:                '💡',
-  Sky:                     '☁️',
-  Atmosphere:              '🌫️',
-  ParticleEmitter:         '✨',
-  Smoke:                   '💨',
-  Fire:                    '🔥',
-  Sparkles:                '✨',
-  Beam:                    '〰️',
-  Trail:                   '〰️',
-  Decal:                   '🖼️',
-  Texture:                 '🖼️',
-  PointLight:              '💡',
-  SpotLight:               '💡',
-  SurfaceLight:            '💡',
-  ClickDetector:           '🖱️',
-  ProximityPrompt:         '🖱️',
-  Motor6D:                 '⚙️',
-  Weld:                    '⚙️',
-  WeldConstraint:          '⚙️',
-  HingeConstraint:         '⚙️',
-  BallSocketConstraint:    '⚙️',
-};
-
-function getIcon(className) {
-  return ICONS[className] || '▫️';
-}
-
 function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames) {
   const children = new Map();
   for (const [child, parent] of parentOf) {
@@ -268,10 +190,9 @@ function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames) {
     const typeId = instanceTypes.get(ref);
     const className = typeId !== undefined ? (typeNames.get(typeId) ?? 'Unknown') : 'Unknown';
     const name = instanceNames.get(ref) || className;
-    const icon = getIcon(className);
     const indent = level === 0 ? '' : ' '.repeat(level + 1);
 
-    lines.push(`${indent}${icon} ${name} [${className}]`);
+    lines.push(`${indent}${name} [${className}]`);
 
     const kids = children.get(ref) || [];
     for (const kid of kids) {
