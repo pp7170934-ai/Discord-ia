@@ -546,20 +546,21 @@ async function setupEmojis(token) {
   if (!appId) throw new Error('Could not get application ID — check DISCORD_TOKEN');
   console.log('[emojis] App ID:', appId);
 
-  // Load existing emojis and delete any stale roblox_* ones so we can recreate fresh
+  // Load existing emojis and reuse them so setup never removes working hierarchy icons
   const existingRes = await discordRequest('GET', `/applications/${appId}/emojis`, null, token);
   const existingList = Array.isArray(existingRes.body) ? existingRes.body : (existingRes.body.items || []);
-  for (const e of existingList) {
-    if (e.name.startsWith('roblox_')) {
-      await discordRequest('DELETE', `/applications/${appId}/emojis/${e.id}`, {}, token);
-      console.log(`[emojis] Deleted old ${e.name}`);
-      await sleep(400);
-    }
-  }
+  const existingByName = new Map(existingList.filter(e => e.name && e.id).map(e => [e.name, e]));
 
   const config = { _version: CONFIG_VERSION };
 
   for (const name of EMOJI_NAMES) {
+    const existing = existingByName.get(name);
+    if (existing) {
+      config[name] = existing.id;
+      console.log(`[emojis] Reusing ${name} → ${existing.id}`);
+      continue;
+    }
+
     // 64×64 art → upscale to 128×128 (Discord minimum)
     const pixels128 = scaleUp2x(makeIcon(name));
     const png = makePNG(pixels128, 128);

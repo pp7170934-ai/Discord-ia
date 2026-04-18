@@ -157,6 +157,12 @@ const commands = [
     .setDMPermission(true),
 
   new SlashCommandBuilder()
+    .setName('whitelist')
+    .setDescription('[OWNER] Give a user AI access without a key')
+    .addStringOption(opt => opt.setName('userid').setDescription('User ID to whitelist').setRequired(true))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
     .setName('stats')
     .setDescription('[OWNER] View bot statistics')
     .setDMPermission(true),
@@ -372,6 +378,7 @@ client.on('interactionCreate', async interaction => {
       '`/keys` — View all keys & status',
       '`/clearkeys` — Delete all unused keys',
       '`/blacklist [userid]` — Blacklist a user from AI',
+      '`/whitelist [userid]` — Give a user AI access without a key',
       '`/remove [userid]` — Remove user from blacklist',
       '`/revoke [userid]` — Revoke a user\'s access',
       '`/broadcast [message]` — Send message to all servers',
@@ -626,6 +633,14 @@ client.on('interactionCreate', async interaction => {
     const result = db.prepare('DELETE FROM authorized_users WHERE user_id = ?').run(targetId);
     if (result.changes === 0) return interaction.reply({ content: `User \`${targetId}\` does not have access.`, ephemeral: true });
     return interaction.reply({ content: `Access revoked for user \`${targetId}\`.`, ephemeral: true });
+  }
+
+  if (commandName === 'whitelist') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    const targetId = interaction.options.getString('userid');
+    db.prepare('INSERT OR IGNORE INTO authorized_users (user_id) VALUES (?)').run(targetId);
+    logActivity(user.id, user.username, 'whitelist', targetId);
+    return interaction.reply({ content: `User \`${targetId}\` has been whitelisted and no longer needs a key.`, ephemeral: true });
   }
 
   if (commandName === 'stats') {
