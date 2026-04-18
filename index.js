@@ -741,25 +741,26 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-  if (commandName === 'broadcast') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only owner.', ephemeral: true });
-    await interaction.deferReply({ ephemeral: true }); // Move this UP
-    const message = interaction.options.getString('message');
-    let sent = 0;
-    for (const guild of client.guilds.cache.values()) {
-      try {
-        const channel = guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(guild.members.me)?.has('SendMessages'));
-        if (channel) { await channel.send(message); sent++; }
-      } catch {}
+if (commandName === 'broadcast') {
+        if (!isOwner(user.id)) return interaction.reply({ content: 'Only owner.', ephemeral: true });
+        await interaction.deferReply({ ephemeral: true });
+        const message = interaction.options.getString('message');
+        let sent = 0;
+        for (const guild of client.guilds.cache.values()) {
+            try {
+                const channel = guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(guild.members.me)?.has('SendMessages'));
+                if (channel) { await channel.send(message); sent++; }
+            } catch {}
+        }
+        return interaction.editReply({ content: `Broadcast sent to **${sent}** server(s).` });
     }
-    return interaction.editReply({ content: `Broadcast sent to **${sent}** server(s).` });
-  
 
-  if (commandName === 'maintenance') {
+    if (commandName === 'maintenance') {
         if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
         const status = interaction.options.getString('status');
-        maintenanceMode = status === 'on';
-        return interaction.reply({ content: `Maintenance mode is now **${maintenanceMode ? 'ON' : 'OFF'}**.` });
+        maintenanceMode = (status === 'on');
+        const msg = `Maintenance mode is now **${maintenanceMode ? 'ON' : 'OFF'}**. ${maintenanceMode ? 'Only you can use /askai.' : 'All users can use /askai.'}`;
+        return interaction.reply({ content: msg, ephemeral: true });
     }
 
     if (commandName === 'clearkeys') {
