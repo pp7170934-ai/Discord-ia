@@ -174,45 +174,82 @@ function parseRBXM(buf) {
 
 const MAX_LINES = 500;
 
-const NAMED_CATEGORIES = new Set([
-  'Script', 'LocalScript', 'ModuleScript',
-  'Part', 'WedgePart', 'CornerWedgePart', 'TrussPart', 'CylinderPart',
-  'UnionOperation', 'MeshPart', 'SpecialMesh',
-  'Model', 'Folder', 'Tool', 'BackpackItem', 'HopperBin',
-  'Workspace', 'Terrain', 'Camera',
-  'ScreenGui', 'Frame', 'ScrollingFrame', 'ViewportFrame',
-  'SurfaceGui', 'BillboardGui',
-  'TextLabel', 'TextButton', 'TextBox',
-  'ImageLabel', 'ImageButton',
-  'RemoteEvent', 'RemoteFunction', 'BindableEvent', 'BindableFunction',
-  'StringValue', 'IntValue', 'NumberValue', 'BoolValue', 'ObjectValue',
-  'Vector3Value', 'CFrameValue', 'Color3Value', 'RayValue',
-  'Animation', 'Animator', 'AnimationController',
-  'Sound', 'SoundGroup',
-  'Players', 'StarterGui', 'StarterPack',
-  'StarterPlayerScripts', 'StarterCharacterScripts',
-  'ReplicatedStorage', 'ServerStorage', 'ServerScriptService',
-  'CoreGui', 'Lighting', 'Chat', 'Teams', 'Team',
-  'SpawnLocation', 'Seat', 'VehicleSeat',
-  'Motor6D', 'Weld', 'WeldConstraint',
-  'HingeConstraint', 'BallSocketConstraint', 'RodConstraint',
-  'BodyPosition', 'BodyVelocity', 'BodyGyro', 'BodyForce',
-  'ClickDetector', 'ProximityPrompt', 'SelectionBox', 'SelectionSphere',
-  'ParticleEmitter', 'Smoke', 'Fire', 'Sparkles', 'Beam', 'Trail',
-  'Decal', 'Texture',
-  'SurfaceLight', 'PointLight', 'SpotLight',
-  'Sky', 'Atmosphere', 'ColorCorrectionEffect', 'BloomEffect', 'BlurEffect',
-  'Humanoid', 'HumanoidDescription', 'CharacterMesh',
-  'Attachment', 'Bone',
-  'Configuration', 'UIListLayout', 'UIGridLayout', 'UIPageLayout',
-  'UITableLayout', 'UIPadding', 'UICorner', 'UIStroke', 'UIAspectRatioConstraint',
-  'UISizeConstraint', 'UITextSizeConstraint',
-  'ForceField', 'Explosion', 'RocketPropulsion',
-  'Script', 'LocalScript', 'ModuleScript',
-]);
+const ICONS = {
+  ModuleScript:            '🟪',
+  Script:                  '📄',
+  LocalScript:             '🟦',
+  Folder:                  '📁',
+  Model:                   '🗂️',
+  Part:                    '📦',
+  WedgePart:               '📦',
+  CornerWedgePart:         '📦',
+  TrussPart:               '📦',
+  CylinderPart:            '📦',
+  MeshPart:                '📦',
+  UnionOperation:          '📦',
+  SpawnLocation:           '📦',
+  Seat:                    '📦',
+  VehicleSeat:             '📦',
+  ScreenGui:               '🖥️',
+  SurfaceGui:              '🖥️',
+  BillboardGui:            '🖥️',
+  Frame:                   '⬜',
+  ScrollingFrame:          '⬜',
+  ViewportFrame:           '⬜',
+  TextLabel:               '🔤',
+  TextButton:              '🔘',
+  TextBox:                 '📝',
+  ImageLabel:              '🖼️',
+  ImageButton:             '🖼️',
+  RemoteEvent:             '📡',
+  RemoteFunction:          '📡',
+  BindableEvent:           '🔔',
+  BindableFunction:        '🔔',
+  Sound:                   '🔊',
+  SoundGroup:              '🔊',
+  Tool:                    '🔧',
+  Humanoid:                '👤',
+  HumanoidDescription:     '👤',
+  Camera:                  '📷',
+  Animation:               '🎬',
+  Animator:                '🎬',
+  AnimationController:     '🎬',
+  Workspace:               '🌍',
+  Terrain:                 '🌍',
+  Players:                 '👥',
+  StarterGui:              '🖥️',
+  StarterPack:             '🎒',
+  StarterPlayerScripts:    '🟦',
+  StarterCharacterScripts: '🟦',
+  ReplicatedStorage:       '🗄️',
+  ServerStorage:           '🗄️',
+  ServerScriptService:     '📄',
+  CoreGui:                 '🖥️',
+  Lighting:                '💡',
+  Sky:                     '☁️',
+  Atmosphere:              '🌫️',
+  ParticleEmitter:         '✨',
+  Smoke:                   '💨',
+  Fire:                    '🔥',
+  Sparkles:                '✨',
+  Beam:                    '〰️',
+  Trail:                   '〰️',
+  Decal:                   '🖼️',
+  Texture:                 '🖼️',
+  PointLight:              '💡',
+  SpotLight:               '💡',
+  SurfaceLight:            '💡',
+  ClickDetector:           '🖱️',
+  ProximityPrompt:         '🖱️',
+  Motor6D:                 '⚙️',
+  Weld:                    '⚙️',
+  WeldConstraint:          '⚙️',
+  HingeConstraint:         '⚙️',
+  BallSocketConstraint:    '⚙️',
+};
 
-function getCategory(className) {
-  return NAMED_CATEGORIES.has(className) ? className : 'Blank';
+function getIcon(className) {
+  return ICONS[className] || '▫️';
 }
 
 function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames) {
@@ -231,12 +268,12 @@ function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames) {
     const typeId = instanceTypes.get(ref);
     const className = typeId !== undefined ? (typeNames.get(typeId) ?? 'Unknown') : 'Unknown';
     const name = instanceNames.get(ref) || className;
-    const category = getCategory(className);
-
+    const icon = getIcon(className);
     const indent = level === 0 ? '' : ' '.repeat(level + 1);
-    lines.push(`${indent}:${category}: ${name} [${className}]`);
 
-    const kids = (children.get(ref) || []);
+    lines.push(`${indent}${icon} ${name} [${className}]`);
+
+    const kids = children.get(ref) || [];
     for (const kid of kids) {
       walk(kid, level + 1);
     }
@@ -250,4 +287,27 @@ function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames) {
   return { lines, truncated };
 }
 
-module.exports = { parseRBXM, renderHierarchy };
+function calculateFlags(typeNames, instanceTypes) {
+  const counts = new Map();
+  for (const [, typeId] of instanceTypes) {
+    const cls = typeNames.get(typeId) || 'Unknown';
+    counts.set(cls, (counts.get(cls) || 0) + 1);
+  }
+
+  const requiresScore =
+    (counts.get('ModuleScript') || 0);
+
+  const destructionScore =
+    (counts.get('Script') || 0) +
+    (counts.get('LocalScript') || 0);
+
+  const sandboxingScore =
+    (counts.get('RemoteEvent') || 0) +
+    (counts.get('RemoteFunction') || 0) +
+    (counts.get('BindableEvent') || 0) +
+    (counts.get('BindableFunction') || 0);
+
+  return { requiresScore, destructionScore, sandboxingScore };
+}
+
+module.exports = { parseRBXM, renderHierarchy, calculateFlags };
