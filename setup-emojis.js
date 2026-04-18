@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const CONFIG_FILE = path.join(__dirname, 'emoji-config.json');
-const CONFIG_VERSION = 2; // bump to force emoji recreation
+const CONFIG_VERSION = 3; // bump to force emoji recreation
 
 // ── Minimal PNG encoder ─────────────────────────────────────────────────────
 
@@ -111,8 +111,25 @@ function makeIcon(name) {
       }
   };
 
-  // ── roblox_part: solid blue square (Roblox Studio Part icon) ──────────────
-  if (name === 'roblox_part') {
+  // ── roblox_cube: wire cube (Roblox Studio Part icon) ──────────────────────
+  if (name === 'roblox_cube') {
+    fill(0, 0, S - 1, S - 1, 35, 35, 38);
+    line(18, 12, 45, 24, 220, 225, 230);
+    line(45, 24, 45, 50, 220, 225, 230);
+    line(45, 50, 18, 38, 220, 225, 230);
+    line(18, 38, 18, 12, 220, 225, 230);
+    line(18, 12, 31, 5, 220, 225, 230);
+    line(45, 24, 57, 16, 220, 225, 230);
+    line(31, 5, 57, 16, 220, 225, 230);
+    line(57, 16, 57, 42, 220, 225, 230);
+    line(57, 42, 45, 50, 220, 225, 230);
+    line(31, 5, 31, 31, 220, 225, 230);
+    line(31, 31, 18, 38, 220, 225, 230);
+    line(31, 31, 57, 42, 220, 225, 230);
+  }
+
+  // ── roblox_part: solid blue square (Roblox Studio value/mesh icon) ────────
+  else if (name === 'roblox_part' || name === 'roblox_value') {
     const m = 12, M = 51;
     fill(m, m, M, M, 72, 148, 214);
     // top highlight
@@ -441,7 +458,9 @@ function scaleUp2x(pixels) {
 // ── Emoji names list ────────────────────────────────────────────────────────
 
 const EMOJI_NAMES = [
+  'roblox_cube',
   'roblox_part',
+  'roblox_value',
   'roblox_folder',
   'roblox_frame',
   'roblox_imagelabel',
@@ -480,7 +499,20 @@ function discordRequest(method, path, body, token) {
     }, res => {
       let out = '';
       res.on('data', c => out += c);
-      res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(out) }));
+      res.on('end', () => {
+        let parsed = {};
+        const text = out.trim();
+        if (text) {
+          try {
+            parsed = JSON.parse(text);
+          } catch (err) {
+            err.message = `Discord returned invalid JSON for ${method} ${path}: ${err.message}`;
+            err.responseBody = out;
+            return reject(err);
+          }
+        }
+        resolve({ status: res.statusCode, body: parsed });
+      });
     });
     req.on('error', reject);
     if (data) req.write(data);
@@ -493,12 +525,18 @@ async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 async function setupEmojis(token) {
   // Check if saved config is already at current version
   if (fs.existsSync(CONFIG_FILE)) {
-    const saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-    if (saved._version === CONFIG_VERSION) {
+    let saved;
+    try {
+      saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    } catch (_) {
+      console.log('[emojis] Existing emoji-config.json is invalid, re-running setup...');
+      saved = null;
+    }
+    if (saved && saved._version === CONFIG_VERSION) {
       console.log(`[emojis] Config v${CONFIG_VERSION} found, skipping setup.`);
       return saved;
     }
-    console.log(`[emojis] Config version mismatch (found ${saved._version}, need ${CONFIG_VERSION}), re-running setup...`);
+    console.log(`[emojis] Config version mismatch (found ${saved ? saved._version : 'invalid'}, need ${CONFIG_VERSION}), re-running setup...`);
   }
 
   console.log('[emojis] Setting up application emojis...');
@@ -510,7 +548,7 @@ async function setupEmojis(token) {
 
   // Load existing emojis and delete any stale roblox_* ones so we can recreate fresh
   const existingRes = await discordRequest('GET', `/applications/${appId}/emojis`, null, token);
-  const existingList = existingRes.body.items || [];
+  const existingList = Array.isArray(existingRes.body) ? existingRes.body : (existingRes.body.items || []);
   for (const e of existingList) {
     if (e.name.startsWith('roblox_')) {
       await discordRequest('DELETE', `/applications/${appId}/emojis/${e.id}`, {}, token);

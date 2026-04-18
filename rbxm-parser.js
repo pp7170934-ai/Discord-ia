@@ -175,10 +175,15 @@ function parseRBXM(buf) {
 const MAX_LINES = 500;
 
 const CLASS_TO_EMOJI_KEY = {
-  Part: 'roblox_part', WedgePart: 'roblox_part', CornerWedgePart: 'roblox_part',
-  TrussPart: 'roblox_part', CylinderPart: 'roblox_part', MeshPart: 'roblox_part',
+  Part: 'roblox_cube', WedgePart: 'roblox_cube', CornerWedgePart: 'roblox_cube',
+  TrussPart: 'roblox_cube', CylinderPart: 'roblox_cube', MeshPart: 'roblox_cube',
   UnionOperation: 'roblox_part', SpawnLocation: 'roblox_part',
   Seat: 'roblox_part', VehicleSeat: 'roblox_part',
+  SpecialMesh: 'roblox_part', BlockMesh: 'roblox_part', FileMesh: 'roblox_part',
+  Attachment: 'roblox_part',
+  Vector3Value: 'roblox_part', CFrameValue: 'roblox_part', NumberValue: 'roblox_part',
+  IntValue: 'roblox_part', BoolValue: 'roblox_part', StringValue: 'roblox_part',
+  ObjectValue: 'roblox_part', Color3Value: 'roblox_part', BrickColorValue: 'roblox_part',
   Folder: 'roblox_folder',
   Frame: 'roblox_frame', ScrollingFrame: 'roblox_frame', ViewportFrame: 'roblox_frame',
   ImageLabel: 'roblox_imagelabel', ImageButton: 'roblox_imagelabel',
