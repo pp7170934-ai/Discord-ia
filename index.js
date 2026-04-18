@@ -5,7 +5,7 @@ const Groq = require('groq-sdk');
 const keepAlive = require('./keep_alive');
 const Database = require('better-sqlite3');
 const { v4: uuidv4 } = require('uuid');
-const { parseRBXM, renderHierarchy } = require('./rbxm-parser');
+const { parseRBXM, renderHierarchy, calculateFlags } = require('./rbxm-parser');
 
 const OWNER_ID = process.env.OWNER_ID || '1397488831514808341';
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -961,37 +961,28 @@ if (commandName === 'broadcast') {
 
       const { typeNames, instanceTypes, parentOf, instanceNames, numInstances } = parseRBXM(buf);
       const { lines, truncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames);
+      const { requiresScore, destructionScore, sandboxingScore } = calculateFlags(typeNames, instanceTypes);
 
-      const typeCount = typeNames.size;
-      const typeList = [...typeNames.values()].slice(0, 20).join(', ') + (typeNames.size > 20 ? '...' : '');
+      const flagsLine = `flags: requires (score: ${requiresScore})  destruction (score: ${destructionScore})  sandboxing (score: ${sandboxingScore})`;
 
-      const header = [
-        `**RBXM Hierarchy** — \`${name}\``,
-        `**Instances:** ${numInstances} | **Types:** ${typeCount} (${typeList})`,
-        '',
-      ].join('\n');
-
-      const treeText = lines.join('\n') + (truncated ? '\n... (truncated at 200 lines)' : '');
-      const fullContent = header + '```\n' + treeText + '\n```';
+      const treeText = lines.join('\n') + (truncated ? '\n...' : '');
+      const fullContent = `\`\`\`\n${treeText}\n\`\`\`\n${flagsLine}`;
 
       if (fullContent.length <= 2000) {
         return interaction.editReply({ content: fullContent });
       }
 
-      const fileBuffer = Buffer.from(
-        `RBXM Hierarchy: ${name}\nInstances: ${numInstances} | Types: ${typeCount}\n\n${treeText}`,
-        'utf8'
-      );
-      const file = new AttachmentBuilder(fileBuffer, { name: 'hierarchy.txt' });
+      const plainText = `RBXM Hierarchy: ${name}\nInstances: ${numInstances} | Types: ${typeNames.size}\n\n${treeText}\n\n${flagsLine}`;
+      const file = new AttachmentBuilder(Buffer.from(plainText, 'utf8'), { name: 'hierarchy.txt' });
 
       const embed = new EmbedBuilder()
         .setTitle(`RBXM Hierarchy — ${name}`)
         .setColor(0x5865F2)
         .addFields(
           { name: 'Instances', value: `${numInstances}`, inline: true },
-          { name: 'Types', value: `${typeCount}`, inline: true },
+          { name: 'Types', value: `${typeNames.size}`, inline: true },
         )
-        .setDescription(`The hierarchy is too large to display inline. See the attached \`hierarchy.txt\` file.${truncated ? '\n*(Truncated at 200 nodes)*' : ''}`)
+        .setDescription(`Hierarchy too large to display inline — see attached file.${truncated ? '\n*(Truncated at 500 nodes)*' : ''}\n\n\`${flagsLine}\``)
         .setFooter({ text: 'RBXM Binary Parser' });
 
       return interaction.editReply({ embeds: [embed], files: [file] });
