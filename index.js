@@ -1,10 +1,11 @@
 
 
-const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField, ApplicationCommandOptionType } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField, ApplicationCommandOptionType, AttachmentBuilder } = require('discord.js');
 const Groq = require('groq-sdk');
 const keepAlive = require('./keep_alive');
 const Database = require('better-sqlite3');
 const { v4: uuidv4 } = require('uuid');
+const { parseRBXM, renderHierarchy } = require('./rbxm-parser');
 
 const OWNER_ID = process.env.OWNER_ID || '1397488831514808341';
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -270,6 +271,16 @@ const commands = [
     .setDescription('[OWNER] Scan the server for external app integrations and warn the server owner')
     .setDefaultMemberPermissions(0)
     .setDMPermission(false),
+
+  new SlashCommandBuilder()
+    .setName('hierarchy')
+    .setDescription('Parse an RBXM binary file and display its instance hierarchy')
+    .addAttachmentOption(opt =>
+      opt.setName('rbx_file')
+        .setDescription('The .rbxm or .rbxl binary file to parse')
+        .setRequired(true)
+    )
+    .setDMPermission(true),
 ];
 
 async function registerCommands() {
@@ -371,6 +382,7 @@ client.on('interactionCreate', async interaction => {
       '`/rps [choice]` — Rock Paper Scissors',
       '`/joke` — Get a random dev joke',
       '`/roast [user]` — AI roasts someone',
+      '`/hierarchy [rbx_file]` — Parse an RBXM/RBXL file and show its instance tree',
       '`/about` — About this bot',
       '`/help` — Show this message',
     ];
@@ -924,6 +936,70 @@ if (commandName === 'broadcast') {
       .setFooter({ text: 'Only authorized users can use /askai' });
 
     return interaction.editReply({ embeds: [embed] });
+  }
+
+  if (commandName === 'hierarchy') {
+    await interaction.deferReply();
+
+    const attachment = interaction.options.getAttachment('rbx_file');
+    const name = attachment.name || '';
+    const lower = name.toLowerCase();
+
+    if (!lower.endsWith('.rbxm') && !lower.endsWith('.rbxl')) {
+      return interaction.editReply({ content: 'Please upload a valid `.rbxm` or `.rbxl` binary file.' });
+    }
+
+    if (attachment.size > 8 * 1024 * 1024) {
+      return interaction.editReply({ content: 'File is too large. Please upload a file under 8 MB.' });
+    }
+
+    try {
+      const res = await fetch(attachment.url);
+      if (!res.ok) throw new Error(`Failed to download file: ${res.status}`);
+      const arrayBuffer = await res.arrayBuffer();
+      const buf = Buffer.from(arrayBuffer);
+
+      const { typeNames, instanceTypes, parentOf, instanceNames, numInstances } = parseRBXM(buf);
+      const { lines, truncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames);
+
+      const typeCount = typeNames.size;
+      const typeList = [...typeNames.values()].slice(0, 20).join(', ') + (typeNames.size > 20 ? '...' : '');
+
+      const header = [
+        `**RBXM Hierarchy** — \`${name}\``,
+        `**Instances:** ${numInstances} | **Types:** ${typeCount} (${typeList})`,
+        '',
+      ].join('\n');
+
+      const treeText = lines.join('\n') + (truncated ? '\n... (truncated at 200 lines)' : '');
+      const fullContent = header + '```\n' + treeText + '\n```';
+
+      if (fullContent.length <= 2000) {
+        return interaction.editReply({ content: fullContent });
+      }
+
+      const fileBuffer = Buffer.from(
+        `RBXM Hierarchy: ${name}\nInstances: ${numInstances} | Types: ${typeCount}\n\n${treeText}`,
+        'utf8'
+      );
+      const file = new AttachmentBuilder(fileBuffer, { name: 'hierarchy.txt' });
+
+      const embed = new EmbedBuilder()
+        .setTitle(`RBXM Hierarchy — ${name}`)
+        .setColor(0x5865F2)
+        .addFields(
+          { name: 'Instances', value: `${numInstances}`, inline: true },
+          { name: 'Types', value: `${typeCount}`, inline: true },
+        )
+        .setDescription(`The hierarchy is too large to display inline. See the attached \`hierarchy.txt\` file.${truncated ? '\n*(Truncated at 200 nodes)*' : ''}`)
+        .setFooter({ text: 'RBXM Binary Parser' });
+
+      return interaction.editReply({ embeds: [embed], files: [file] });
+
+    } catch (err) {
+      const msg = err.message || 'Unknown error';
+      return interaction.editReply({ content: `Failed to parse the file: ${msg}` });
+    }
   }
 
   if (commandName === 'check') {
