@@ -37,6 +37,21 @@ db.exec(`
     language TEXT DEFAULT 'english',
     response_style TEXT DEFAULT 'balanced'
   );
+
+  CREATE TABLE IF NOT EXISTS admins (
+    user_id TEXT PRIMARY KEY,
+    added_by TEXT,
+    added_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS activity_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT,
+    username TEXT,
+    action TEXT,
+    detail TEXT,
+    logged_at TEXT DEFAULT (datetime('now'))
+  );
 `);
 
 let maintenanceMode = false;
@@ -64,6 +79,7 @@ const commands = [
     .setName('askai')
     .setDescription('Ask the AI a question (requires a valid key)')
     .addStringOption(opt => opt.setName('question').setDescription('Your question').setRequired(true))
+    .addAttachmentOption(opt => opt.setName('image').setDescription('Optional image for the AI to analyse'))
     .setDMPermission(true),
 
   new SlashCommandBuilder()
@@ -224,6 +240,24 @@ const commands = [
     .setName('clearkeys')
     .setDescription('[OWNER] Delete all unused keys')
     .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('admin-add')
+    .setDescription('[OWNER] Grant admin privileges to a user')
+    .addStringOption(opt => opt.setName('userid').setDescription('User ID to make admin').setRequired(true))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('admin-remove')
+    .setDescription('[OWNER] Remove admin privileges from a user')
+    .addStringOption(opt => opt.setName('userid').setDescription('User ID to remove from admins').setRequired(true))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('logs')
+    .setDescription('[OWNER/ADMIN] View recent activity logs')
+    .addIntegerOption(opt => opt.setName('limit').setDescription('Number of entries (default 10, max 25)').setMinValue(1).setMaxValue(25))
+    .setDMPermission(true),
 ];
 
 async function registerCommands() {
@@ -255,6 +289,15 @@ function isBlacklisted(userId) {
 function isAuthorized(userId) {
   const row = db.prepare('SELECT 1 FROM authorized_users WHERE user_id = ?').get(userId);
   return !!row;
+}
+
+function isAdmin(userId) {
+  const row = db.prepare('SELECT 1 FROM admins WHERE user_id = ?').get(userId);
+  return !!row;
+}
+
+function logActivity(userId, username, action, detail = '') {
+  db.prepare('INSERT INTO activity_log (user_id, username, action, detail) VALUES (?, ?, ?, ?)').run(userId, username, action, detail);
 }
 
 function getUserConfig(userId) {
@@ -406,20 +449,36 @@ client.on('interactionCreate', async interaction => {
     }
 
     const question = interaction.options.getString('question');
+    const attachment = interaction.options.getAttachment('image');
     await interaction.deferReply();
 
     try {
       const config = getUserConfig(user.id);
       const { system, question: q } = buildAIPrompt(config, question);
 
+      let userContent;
+      if (attachment && attachment.contentType && attachment.contentType.startsWith('image/')) {
+        userContent = [
+          { type: 'text', text: q },
+          { type: 'image_url', image_url: { url: attachment.url } }
+        ];
+      } else {
+        userContent = q;
+      }
+
+      const model = (attachment && attachment.contentType && attachment.contentType.startsWith('image/'))
+        ? 'meta-llama/llama-4-scout-17b-16e-instruct'
+        : 'llama-3.3-70b-versatile';
+
       const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+        model,
         messages: [
           { role: 'system', content: system },
-          { role: 'user', content: q }
+          { role: 'user', content: userContent }
         ],
         max_tokens: 1500,
       });
+      logActivity(user.id, user.username, 'askai', question.slice(0, 100));
       const text = completion.choices[0].message.content;
 
       const chunks = [];
@@ -518,7 +577,7 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (commandName === 'keys') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    if (!isOwner(user.id) && !isAdmin(user.id)) return interaction.reply({ content: 'Only the owner or an admin can use this command.', ephemeral: true });
     const rows = db.prepare('SELECT * FROM keys ORDER BY created_at DESC LIMIT 30').all();
     if (!rows.length) return interaction.reply({ content: 'No keys generated yet.', ephemeral: true });
     const lines = rows.map(r => `\`${r.key}\` — ${r.used ? `Used by ${r.used_by}` : 'Available'}`);
@@ -545,7 +604,7 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (commandName === 'revoke') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    if (!isOwner(user.id) && !isAdmin(user.id)) return interaction.reply({ content: 'Only the owner or an admin can use this command.', ephemeral: true });
     const targetId = interaction.options.getString('userid');
     const result = db.prepare('DELETE FROM authorized_users WHERE user_id = ?').run(targetId);
     if (result.changes === 0) return interaction.reply({ content: `User \`${targetId}\` does not have access.`, ephemeral: true });
@@ -770,6 +829,37 @@ if (commandName === 'broadcast') {
         return interaction.reply({ content: `Deleted **${result.changes}** unused key(s).`, ephemeral: true });
     }
 });
+
+  if (commandName === 'admin-add') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    const targetId = interaction.options.getString('userid');
+    if (targetId === OWNER_ID) return interaction.reply({ content: 'The owner is already the highest authority.', ephemeral: true });
+    db.prepare('INSERT OR IGNORE INTO admins (user_id, added_by) VALUES (?, ?)').run(targetId, user.id);
+    logActivity(user.id, user.username, 'admin-add', targetId);
+    return interaction.reply({ content: `✅ User \`${targetId}\` has been granted admin privileges. They can now use \`/revoke\`, \`/keys\`, and \`/logs\`.`, ephemeral: true });
+  }
+
+  if (commandName === 'admin-remove') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    const targetId = interaction.options.getString('userid');
+    const result = db.prepare('DELETE FROM admins WHERE user_id = ?').run(targetId);
+    if (result.changes === 0) return interaction.reply({ content: `User \`${targetId}\` is not an admin.`, ephemeral: true });
+    logActivity(user.id, user.username, 'admin-remove', targetId);
+    return interaction.reply({ content: `✅ Admin privileges removed from \`${targetId}\`.`, ephemeral: true });
+  }
+
+  if (commandName === 'logs') {
+    if (!isOwner(user.id) && !isAdmin(user.id)) return interaction.reply({ content: 'Only the owner or an admin can use this command.', ephemeral: true });
+    const limit = interaction.options.getInteger('limit') || 10;
+    const rows = db.prepare('SELECT * FROM activity_log ORDER BY logged_at DESC LIMIT ?').all(limit);
+    if (!rows.length) return interaction.reply({ content: 'No activity logged yet.', ephemeral: true });
+    const lines = rows.map(r => `\`[${r.logged_at}]\` **${r.action}** by <@${r.user_id}> — ${r.detail || '_no detail_'}`);
+    const embed = new EmbedBuilder()
+      .setTitle(`Recent Activity (last ${rows.length})`)
+      .setColor(0x5865F2)
+      .setDescription(lines.join('\n').slice(0, 4096));
+    return interaction.reply({ embeds: [embed], ephemeral: true });
+  }
 
 keepAlive();
 client.login(TOKEN).catch(err => {
