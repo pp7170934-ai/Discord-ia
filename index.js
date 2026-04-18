@@ -245,7 +245,7 @@ async function registerCommands() {
       ...c.toJSON(),
       integration_types: [0, 1],
       contexts: [0, 1, 2],
-    }));
+    });
     await rest.put(Routes.applicationCommands(clientId), { body: commandsJson });
     console.log('Slash commands registered globally with DM support.');
   } catch (err) {
