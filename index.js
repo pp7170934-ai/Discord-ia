@@ -2,6 +2,7 @@
 
 const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField, ApplicationCommandOptionType } = require('discord.js');
 const Groq = require('groq-sdk');
+const keepAlive = require('./keep_alive');
 const Database = require('better-sqlite3');
 const { v4: uuidv4 } = require('uuid');
 
@@ -770,6 +771,7 @@ if (commandName === 'broadcast') {
     }
 });
 
+keepAlive();
 client.login(TOKEN).catch(err => {
     console.error('Failed to login:', err.message);
     process.exit(1);
