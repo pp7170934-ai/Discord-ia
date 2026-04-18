@@ -1,4 +1,14 @@
-const keepAlive = require('./keep_alive');
+// This forces every command to wait for Grok
+const originalEmit = require('events').EventEmitter.prototype.emit;
+require('events').EventEmitter.prototype.emit = function(event, ...args) {
+    if (event === 'interactionCreate') {
+        const interaction = args[0];
+        if (interaction.isCommand() && !interaction.replied) {
+            interaction.deferReply().catch(() => {});
+        }
+    }
+    return originalEmit.apply(this, [event, ...args]);
+};const keepAlive = require('./keep_alive');
 keepAlive();
 
 const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField, ApplicationCommandOptionType } = require('discord.js');
