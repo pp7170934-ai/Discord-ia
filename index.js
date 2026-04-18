@@ -6,6 +6,14 @@ const keepAlive = require('./keep_alive');
 const Database = require('better-sqlite3');
 const { v4: uuidv4 } = require('uuid');
 const { parseRBXM, renderHierarchy, calculateFlags } = require('./rbxm-parser');
+const { setupEmojis } = require('./setup-emojis');
+const fs = require('fs');
+
+let emojiConfig = null;
+try {
+  emojiConfig = JSON.parse(fs.readFileSync('./emoji-config.json', 'utf8'));
+} catch (_) {}
+
 
 const OWNER_ID = process.env.OWNER_ID || '1397488831514808341';
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -347,6 +355,11 @@ client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   client.user.setActivity('/help | AI Scripting Bot', { type: 2 });
   await registerCommands();
+  try {
+    emojiConfig = await setupEmojis(TOKEN);
+  } catch (e) {
+    console.error('[emojis] Setup failed:', e.message);
+  }
 });
 
 client.on('interactionCreate', async interaction => {
@@ -960,7 +973,7 @@ if (commandName === 'broadcast') {
       const buf = Buffer.from(arrayBuffer);
 
       const { typeNames, instanceTypes, parentOf, instanceNames, numInstances } = parseRBXM(buf);
-      const { lines, truncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames);
+      const { lines, truncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emojiConfig);
       const { requiresScore, destructionScore, sandboxingScore } = calculateFlags(typeNames, instanceTypes);
 
       const flagsLine = `flags: requires (score: ${requiresScore})  destruction (score: ${destructionScore})  sandboxing (score: ${sandboxingScore})`;
