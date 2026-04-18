@@ -214,7 +214,8 @@ const commands = [
     .setDescription('[OWNER] Send a DM to a user as the bot')
     .addStringOption(opt => opt.setName('userid').setDescription('User ID to DM').setRequired(true))
     .addStringOption(opt => opt.setName('message').setDescription('Message to send').setRequired(true))
-    .setDMPermission(true),
+    .setDefaultMemberPermissions(0)
+    .setDMPermission(false),
 
   new SlashCommandBuilder()
     .setName('broadcast')
@@ -263,6 +264,12 @@ const commands = [
     .setName('ranks')
     .setDescription('View all users and their rank (Owner, Admin, Authorized)')
     .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('check')
+    .setDescription('[OWNER] Scan the server for external app integrations and warn the server owner')
+    .setDefaultMemberPermissions(0)
+    .setDMPermission(false),
 ];
 
 async function registerCommands() {
@@ -917,6 +924,42 @@ if (commandName === 'broadcast') {
       .setFooter({ text: 'Only authorized users can use /askai' });
 
     return interaction.editReply({ embeds: [embed] });
+  }
+
+  if (commandName === 'check') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    if (!interaction.guild) return interaction.reply({ content: 'This command must be used inside a server.', ephemeral: true });
+
+    await interaction.deferReply({ ephemeral: true });
+
+    let integrations;
+    try {
+      integrations = await interaction.guild.fetchIntegrations();
+    } catch {
+      return interaction.editReply({ content: 'Failed to fetch integrations. Make sure the bot has the **Manage Server** permission.' });
+    }
+
+    // Filter for external application (bot) integrations
+    const externalApps = integrations.filter(i => i.type === 'discord');
+
+    if (externalApps.size === 0) {
+      return interaction.editReply({ content: '✅ No external app integrations found in this server. Looks clean!' });
+    }
+
+    // Build list of found apps
+    const appList = externalApps.map(i => `• **${i.application?.name || i.name || 'Unknown App'}**`).join('\n');
+
+    // DM the server owner
+    const warningMessage = `⚠️ **Nyx Security Alert**\n\nNyx have recently scanned your server **${interaction.guild.name}** and found that external apps are enabled on it.\n\n**External apps detected:**\n${appList}\n\nIt is better if you disable or review them to prevent the server from being raided.`;
+
+    try {
+      const guildOwner = await client.users.fetch(interaction.guild.ownerId);
+      await guildOwner.send(warningMessage);
+      logActivity(user.id, user.username, 'check', `Scanned ${interaction.guild.name} — found ${externalApps.size} external app(s), warned owner ${interaction.guild.ownerId}`);
+      return interaction.editReply({ content: `⚠️ Found **${externalApps.size}** external app integration(s). The server owner has been warned via DM.\n\n${appList}` });
+    } catch {
+      return interaction.editReply({ content: `⚠️ Found **${externalApps.size}** external app integration(s), but could not DM the server owner (DMs may be disabled).\n\n${appList}` });
+    }
   }
 
 });
