@@ -1,6 +1,6 @@
 
 
-const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField, ApplicationCommandOptionType } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField, ApplicationCommandOptionType, AttachmentBuilder } = require('discord.js');
 const Groq = require('groq-sdk');
 const keepAlive = require('./keep_alive');
 const Database = require('better-sqlite3');
@@ -88,7 +88,9 @@ const commands = [
     .setName('askai')
     .setDescription('Ask the AI a question (requires a valid key)')
     .addStringOption(opt => opt.setName('question').setDescription('Your question').setRequired(true))
+    .addAttachmentOption(opt => opt.setName('file').setDescription('Optional file or image for the AI to analyse'))
     .addAttachmentOption(opt => opt.setName('image').setDescription('Optional image for the AI to analyse'))
+    .addBooleanOption(opt => opt.setName('txt_file').setDescription('Send the AI answer as a .txt file'))
     .setDMPermission(true),
 
   new SlashCommandBuilder()
@@ -351,6 +353,28 @@ function buildAIPrompt(config, question) {
   return { system: systemParts.join(' '), question };
 }
 
+function isTextAttachment(attachment) {
+  const contentType = (attachment.contentType || '').toLowerCase();
+  const name = (attachment.name || '').toLowerCase();
+  return contentType.startsWith('text/') ||
+    contentType.includes('json') ||
+    contentType.includes('javascript') ||
+    contentType.includes('typescript') ||
+    contentType.includes('xml') ||
+    contentType.includes('yaml') ||
+    ['.txt', '.js', '.ts', '.jsx', '.tsx', '.json', '.lua', '.luau', '.py', '.html', '.css', '.md', '.xml', '.yml', '.yaml', '.csv', '.log'].some(ext => name.endsWith(ext));
+}
+
+async function readAttachmentText(attachment) {
+  if (attachment.size > 512 * 1024) {
+    throw new Error('That text file is too large. Please upload a file under 512 KB.');
+  }
+  const res = await fetch(attachment.url);
+  if (!res.ok) throw new Error(`Failed to download attachment: ${res.status}`);
+  const text = await res.text();
+  return text.length > 12000 ? text.slice(0, 12000) + '\n\n[File was shortened because it is too long.]' : text;
+}
+
 client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   client.user.setActivity('/help | AI Scripting Bot', { type: 2 });
@@ -486,7 +510,8 @@ client.on('interactionCreate', async interaction => {
     }
 
     const question = interaction.options.getString('question');
-    const attachment = interaction.options.getAttachment('image');
+    const attachment = interaction.options.getAttachment('file') || interaction.options.getAttachment('image');
+    const answerAsFile = interaction.options.getBoolean('txt_file') || false;
     await interaction.deferReply();
 
     try {
@@ -494,16 +519,23 @@ client.on('interactionCreate', async interaction => {
       const { system, question: q } = buildAIPrompt(config, question);
 
       let userContent;
-      if (attachment && attachment.contentType && attachment.contentType.startsWith('image/')) {
+      const isImage = attachment && attachment.contentType && attachment.contentType.startsWith('image/');
+      if (isImage) {
         userContent = [
           { type: 'text', text: q },
           { type: 'image_url', image_url: { url: attachment.url } }
         ];
+      } else if (attachment) {
+        if (!isTextAttachment(attachment)) {
+          return interaction.editReply({ content: 'Please upload an image or a readable text/code file.' });
+        }
+        const fileText = await readAttachmentText(attachment);
+        userContent = `${q}\n\nAttached file: ${attachment.name}\n\n${fileText}`;
       } else {
         userContent = q;
       }
 
-      const model = (attachment && attachment.contentType && attachment.contentType.startsWith('image/'))
+      const model = isImage
         ? 'meta-llama/llama-4-scout-17b-16e-instruct'
         : 'llama-3.3-70b-versatile';
 
@@ -517,6 +549,11 @@ client.on('interactionCreate', async interaction => {
       });
       logActivity(user.id, user.username, 'askai', question.slice(0, 100));
       const text = completion.choices[0].message.content;
+
+      if (answerAsFile) {
+        const file = new AttachmentBuilder(Buffer.from(text, 'utf8'), { name: 'askai-answer.txt' });
+        return interaction.editReply({ content: 'Here is the AI answer as a text file:', files: [file] });
+      }
 
       const chunks = [];
       let remaining = text;
