@@ -236,7 +236,7 @@ function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emoj
     const name = instanceNames.get(ref);
     const indent = level === 0 ? '' : ' '.repeat(level + 1);
     const icon = getEmoji(className, emojiConfig);
-    const label = (name && name !== className) ? `${name} (${className})` : className;
+    const label = name ? `${name} (${className})` : className;
 
     lines.push(`${indent}${icon}${label}`);
 
