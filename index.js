@@ -243,6 +243,33 @@ const commands = [
     .setDMPermission(true),
 
   new SlashCommandBuilder()
+    .setName('check')
+    .setDescription('[OWNER] Scan the server for external app integrations and warn the server owner')
+    .setDefaultMemberPermissions(0)
+    .setDMPermission(false),
+
+  new SlashCommandBuilder()
+    .setName('global-config')
+    .setDescription('[OWNER] Configure the AI settings for all users')
+    .addStringOption(opt => opt
+      .setName('setting')
+      .setDescription('Which setting to change')
+      .setRequired(true)
+      .addChoices(
+        { name: 'view - View current global config', value: 'view' },
+        { name: 'personality - Set AI personality preset', value: 'personality' },
+        { name: 'system-prompt - Append a global instruction to all responses', value: 'system-prompt' },
+        { name: 'model - Set the AI model (text responses)', value: 'model' },
+        { name: 'temperature - Set creativity level (0.0 to 2.0)', value: 'temperature' },
+        { name: 'max-tokens - Set max response length (500 to 4000)', value: 'max-tokens' },
+        { name: 'reset - Reset all global config to defaults', value: 'reset' },
+      )
+    )
+    .addStringOption(opt => opt.setName('value').setDescription('Value for the setting').setRequired(false))
+    .setDefaultMemberPermissions(0)
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
     .setName('hierarchy')
     .setDescription('Parse an RBXM binary file and display its instance hierarchy')
     .addAttachmentOption(opt =>
@@ -909,6 +936,102 @@ if (commandName === 'broadcast') {
     } catch (err) {
       const msg = err.message || 'Unknown error';
       return interaction.editReply({ content: `Failed to parse the file: ${msg}` });
+    }
+  }
+
+
+  if (commandName === 'check') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    if (!interaction.guild) return interaction.reply({ content: 'This command must be used inside a server.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    let integrations;
+    try {
+      integrations = await interaction.guild.fetchIntegrations();
+    } catch {
+      return interaction.editReply({ content: 'Failed to fetch integrations. Make sure the bot has the Manage Server permission.' });
+    }
+    const externalApps = integrations.filter(i => i.type === 'discord');
+    if (externalApps.size === 0) {
+      return interaction.editReply({ content: 'No external app integrations found in this server. Looks clean!' });
+    }
+    const appList = externalApps.map(i => '- ' + ((i.application && i.application.name) ? i.application.name : (i.name || 'Unknown App'))).join('\n');
+    const warningMsg = 'Nyx Security Alert\n\nNyx have recently scanned your server ' + interaction.guild.name + ' and found that external apps are enabled on it.\n\nApps detected:\n' + appList + '\n\nIt is better if you disable or review them to prevent the server from being raided.';
+    try {
+      const guildOwner = await client.users.fetch(interaction.guild.ownerId);
+      await guildOwner.send(warningMsg);
+      logActivity(user.id, user.username, 'check', 'Scanned ' + interaction.guild.name + ', warned owner, ' + externalApps.size + ' app(s)');
+      return interaction.editReply({ content: 'Found **' + externalApps.size + '** external app(s). Server owner warned via DM.\n\n' + appList });
+    } catch {
+      return interaction.editReply({ content: 'Found **' + externalApps.size + '** external app(s), but could not DM the server owner.\n\n' + appList });
+    }
+  }
+
+  if (commandName === 'global-config') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    const setting = interaction.options.getString('setting');
+    const value = interaction.options.getString('value');
+    const setConfig = (key, val) => db.prepare('INSERT OR REPLACE INTO global_config (key, value) VALUES (?, ?)').run(key, val);
+
+    if (setting === 'view') {
+      const cfg = getGlobalConfig();
+      const embed = new EmbedBuilder()
+        .setTitle('Global AI Config')
+        .setColor(0x5865F2)
+        .addFields(
+          { name: 'Personality', value: cfg.personality, inline: true },
+          { name: 'Model', value: cfg.model, inline: true },
+          { name: 'Temperature', value: String(cfg.temperature), inline: true },
+          { name: 'Max Tokens', value: String(cfg.max_tokens), inline: true },
+          { name: 'Global System Prompt', value: cfg.system_prompt || '_None set_' },
+        )
+        .setFooter({ text: 'Use /global-config [setting] [value] to change' });
+      return interaction.reply({ embeds: [embed], ephemeral: true });
+    }
+
+    if (setting === 'reset') {
+      db.prepare('DELETE FROM global_config').run();
+      logActivity(user.id, user.username, 'global-config', 'Reset all global config to defaults');
+      return interaction.reply({ content: 'Global AI config has been reset to defaults.', ephemeral: true });
+    }
+
+    if (!value) return interaction.reply({ content: 'Please provide a value for this setting.', ephemeral: true });
+
+    if (setting === 'personality') {
+      const valid = Object.keys(PERSONALITY_PROMPTS);
+      if (!valid.includes(value)) return interaction.reply({ content: 'Invalid personality. Choose from: ' + valid.join(', '), ephemeral: true });
+      setConfig('personality', value);
+      logActivity(user.id, user.username, 'global-config', 'personality set to ' + value);
+      return interaction.reply({ content: 'AI personality set to **' + value + '**.\n> ' + PERSONALITY_PROMPTS[value], ephemeral: true });
+    }
+
+    if (setting === 'system-prompt') {
+      setConfig('system_prompt', value);
+      logActivity(user.id, user.username, 'global-config', 'system-prompt updated');
+      return interaction.reply({ content: 'Global system prompt updated.\n> ' + value, ephemeral: true });
+    }
+
+    if (setting === 'model') {
+      const validModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it'];
+      if (!validModels.includes(value)) return interaction.reply({ content: 'Invalid model. Choose from: ' + validModels.join(', '), ephemeral: true });
+      setConfig('model', value);
+      logActivity(user.id, user.username, 'global-config', 'model set to ' + value);
+      return interaction.reply({ content: 'AI model set to ' + value + '.', ephemeral: true });
+    }
+
+    if (setting === 'temperature') {
+      const temp = parseFloat(value);
+      if (isNaN(temp) || temp < 0 || temp > 2) return interaction.reply({ content: 'Temperature must be a number between 0.0 and 2.0.', ephemeral: true });
+      setConfig('temperature', String(temp));
+      logActivity(user.id, user.username, 'global-config', 'temperature set to ' + temp);
+      return interaction.reply({ content: 'Temperature set to **' + temp + '**. (0 = focused, 2 = very creative)', ephemeral: true });
+    }
+
+    if (setting === 'max-tokens') {
+      const tokens = parseInt(value);
+      if (isNaN(tokens) || tokens < 500 || tokens > 4000) return interaction.reply({ content: 'Max tokens must be between 500 and 4000.', ephemeral: true });
+      setConfig('max_tokens', String(tokens));
+      logActivity(user.id, user.username, 'global-config', 'max-tokens set to ' + tokens);
+      return interaction.reply({ content: 'Max tokens set to **' + tokens + '**.', ephemeral: true });
     }
   }
 
