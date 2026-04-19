@@ -143,7 +143,7 @@ function parseRBXM(buf) {
 
         if (propName === 'Name') {
           const propType = data[p]; p += 1;
-          if (propType === 0x02) {
+          if (propType === 0x01) {
             const typeEntry = pendingProps.find(e => e.typeId === typeId);
             const refs = typeEntry ? typeEntry.refs : [];
             for (let i = 0; i < refs.length; i++) {
