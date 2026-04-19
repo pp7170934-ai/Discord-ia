@@ -271,11 +271,16 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('hierarchy')
-    .setDescription('Parse an RBXM binary file and display its instance hierarchy')
+    .setDescription('Parse a Roblox file by upload or asset ID and display its instance hierarchy')
     .addAttachmentOption(opt =>
       opt.setName('rbx_file')
-        .setDescription('The .rbxm or .rbxl binary file to parse')
-        .setRequired(true)
+        .setDescription('Upload a .rbxm or .rbxl binary file')
+        .setRequired(false)
+    )
+    .addStringOption(opt =>
+      opt.setName('asset_id')
+        .setDescription('Roblox asset ID to fetch and scan directly')
+        .setRequired(false)
     )
     .setDMPermission(true),
 ];
@@ -893,22 +898,41 @@ if (commandName === 'broadcast') {
     await interaction.deferReply();
 
     const attachment = interaction.options.getAttachment('rbx_file');
-    const name = attachment.name || '';
-    const lower = name.toLowerCase();
+    const assetId = interaction.options.getString('asset_id');
 
-    if (!lower.endsWith('.rbxm') && !lower.endsWith('.rbxl')) {
-      return interaction.editReply({ content: 'Please upload a valid `.rbxm` or `.rbxl` binary file.' });
+    if (!attachment && !assetId) {
+      return interaction.editReply({ content: 'Please provide either a `.rbxm`/`.rbxl` file **or** a Roblox asset ID.' });
     }
 
-    if (attachment.size > 8 * 1024 * 1024) {
-      return interaction.editReply({ content: 'File is too large. Please upload a file under 8 MB.' });
+    let buf;
+    try {
+      if (assetId) {
+        const trimmedId = assetId.trim().replace(/[^0-9]/g, '');
+        if (!trimmedId) return interaction.editReply({ content: 'Invalid asset ID. Please enter a numeric Roblox asset ID.' });
+        const assetUrl = 'https://assetdelivery.roblox.com/v1/asset/?id=' + trimmedId;
+        const assetRes = await fetch(assetUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (!assetRes.ok) return interaction.editReply({ content: 'Could not fetch asset ID `' + trimmedId + '`. Make sure it is a valid public Roblox asset.' });
+        const arrayBuffer = await assetRes.arrayBuffer();
+        buf = Buffer.from(arrayBuffer);
+      } else {
+        const name = attachment.name || '';
+        const lower = name.toLowerCase();
+        if (!lower.endsWith('.rbxm') && !lower.endsWith('.rbxl')) {
+          return interaction.editReply({ content: 'Please upload a valid `.rbxm` or `.rbxl` binary file.' });
+        }
+        if (attachment.size > 8 * 1024 * 1024) {
+          return interaction.editReply({ content: 'File is too large. Please upload a file under 8 MB.' });
+        }
+        const fileRes = await fetch(attachment.url);
+        if (!fileRes.ok) throw new Error('Failed to download file: ' + fileRes.status);
+        const arrayBuffer = await fileRes.arrayBuffer();
+        buf = Buffer.from(arrayBuffer);
+      }
+    } catch (err) {
+      return interaction.editReply({ content: 'Failed to retrieve the file: ' + (err.message || 'Unknown error') });
     }
 
     try {
-      const res = await fetch(attachment.url);
-      if (!res.ok) throw new Error(`Failed to download file: ${res.status}`);
-      const arrayBuffer = await res.arrayBuffer();
-      const buf = Buffer.from(arrayBuffer);
 
       const { typeNames, instanceTypes, parentOf, instanceNames, numInstances } = parseRBXM(buf);
       const { requiresScore, destructionScore, sandboxingScore } = calculateFlags(typeNames, instanceTypes);
