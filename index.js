@@ -386,7 +386,7 @@ async function readAttachmentText(attachment) {
   return text.length > 12000 ? text.slice(0, 12000) + '\n\n[File was shortened because it is too long.]' : text;
 }
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
   client.user.setActivity('/help | AI Scripting Bot', { type: 2 });
   await registerCommands();
