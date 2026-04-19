@@ -942,18 +942,18 @@ if (commandName === 'broadcast') {
       const { lines: allLines, truncated: parseTruncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emojiConfig);
 
       // Build inline preview: keep adding lines until we'd exceed 1900 chars
-      const CHAR_LIMIT = 1900;
-      const suffix = '\n' + flagsLine;
+      // Reserve chars for: ```\n (4) + \n``` (4) + \n... (4) + \n + flagsLine
+      const CHAR_LIMIT = 2000 - 4 - 4 - 4 - 1 - flagsLine.length;
       let previewLines = [];
-      let charCount = suffix.length + 4; // +4 for '\n...'
+      let charCount = 0;
       let inlineTruncated = false;
       for (const ln of allLines) {
         if (charCount + ln.length + 1 > CHAR_LIMIT) { inlineTruncated = true; break; }
         previewLines.push(ln);
         charCount += ln.length + 1;
       }
-      const previewText = previewLines.join('\n') + ((inlineTruncated || parseTruncated) ? '\n...' : '');
-      const inlineMsg = previewText + suffix;
+      const hierarchyContent = previewLines.join('\n') + ((inlineTruncated || parseTruncated) ? '\n...' : '');
+      const inlineMsg = '```\n' + hierarchyContent + '\n```\n' + flagsLine;
 
       return interaction.editReply({ content: inlineMsg });
 
