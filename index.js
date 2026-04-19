@@ -200,6 +200,13 @@ const commands = [
     .setDMPermission(true),
 
   new SlashCommandBuilder()
+    .setName('debug')
+    .setDescription('Debug an error message with AI step-by-step help (requires key)')
+    .addStringOption(opt => opt.setName('error').setDescription('The error message or issue to debug').setRequired(true))
+    .addStringOption(opt => opt.setName('code').setDescription('Optional: the code that caused the error'))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
     .setName('broadcast')
     .setDescription('[OWNER] Broadcast a message to all servers the bot is in')
     .addStringOption(opt => opt.setName('message').setDescription('Message to broadcast').setRequired(true))
@@ -831,6 +838,68 @@ Be accurate and honest. Replace the bracketed danger level line with only one of
     } catch (err) {
       console.error('Test command error:', err);
       return interaction.editReply({ content: 'Could not analyse the script right now. Try again later.' });
+    }
+  }
+
+  if (commandName === 'debug') {
+    if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
+    if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
+    if (maintenanceMode && !isOwner(user.id)) return interaction.reply({ content: 'The bot is currently in maintenance mode. Try again later.', ephemeral: true });
+
+    const errorMsg = interaction.options.getString('error');
+    const codeSnippet = interaction.options.getString('code') || null;
+    await interaction.deferReply();
+    try {
+      const userContent = codeSnippet
+        ? `Error message:\n${errorMsg}\n\nRelated code:\n\`\`\`\n${codeSnippet}\n\`\`\``
+        : `Error message:\n${errorMsg}`;
+
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert debugger. When given an error message (and optional code), respond in this EXACT format using Discord markdown:
+
+\`\`\`
+🐛 DEBUG REPORT
+═══════════════════════════
+
+🔍 WHAT THE ERROR MEANS:
+[Clear plain-English explanation of what this error is and why it happens]
+
+📍 ROOT CAUSE:
+[What specifically is causing this error]
+
+🔧 STEP-BY-STEP FIX:
+1. [First step]
+2. [Second step]
+3. [Continue as needed...]
+
+💡 PRO TIP:
+[One helpful tip to avoid this error in the future]
+\`\`\`
+
+Be specific, practical, and beginner-friendly. If code was provided, reference it directly in your fix steps.`
+          },
+          { role: 'user', content: userContent }
+        ],
+        max_tokens: 1500,
+      });
+
+      const text = completion.choices[0].message.content;
+      logActivity(user.id, user.username, 'debug', errorMsg.slice(0, 100));
+
+      const embed = new EmbedBuilder()
+        .setTitle('🐛 Debug Results')
+        .setColor(0xED4245)
+        .setAuthor({ name: `Debugged for ${user.username}`, iconURL: user.displayAvatarURL() })
+        .setDescription(text.length > 4096 ? text.slice(0, 4090) + '...' : text);
+
+      return interaction.editReply({ embeds: [embed] });
+    } catch (err) {
+      console.error('Debug command error:', err);
+      return interaction.editReply({ content: 'Could not debug the error right now. Try again later.' });
     }
   }
 
