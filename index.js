@@ -279,6 +279,12 @@ const commands = [
     .setDMPermission(true),
 
   new SlashCommandBuilder()
+    .setName('userinfo')
+    .setDescription('[OWNER] View full bot profile of any user')
+    .addStringOption(opt => opt.setName('userid').setDescription('The user ID to look up').setRequired(true))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
     .setName('broadcast')
     .setDescription('[OWNER] Broadcast a message to all servers the bot is in')
     .addStringOption(opt => opt.setName('message').setDescription('Message to broadcast').setRequired(true))
@@ -860,7 +866,10 @@ client.on('interactionCreate', async interaction => {
         .setColor(0x5865F2)
         .setDescription(text.length > 4096 ? text.slice(0, 4090) + '...' : text);
       return interaction.editReply({ embeds: [embed] });
-
+    } catch {
+      return interaction.editReply({ content: 'Could not explain the code right now. Try again later.' });
+    }
+  }
 
   if (commandName === 'test') {
     if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
@@ -1188,6 +1197,48 @@ Be thorough. Write real, working code — not pseudocode or placeholders.`
       console.error('Review command error:', err);
       return interaction.editReply({ content: 'Could not review the script right now. Try again later.' });
     }
+  }
+
+  if (commandName === 'userinfo') {
+    if (!isOwner(user.id) && !isAdmin(user.id)) {
+      return interaction.reply({ content: 'Only the owner or an admin can use this command.', ephemeral: true });
+    }
+    var targetId = interaction.options.getString('userid');
+    var authorized = isAuthorized(targetId);
+    var blacklisted = isBlacklisted(targetId);
+    var admin = isAdmin(targetId);
+    var cfg = db.prepare('SELECT * FROM user_config WHERE user_id = ?').get(targetId);
+    var keyRow = db.prepare('SELECT * FROM keys WHERE used_by = ?').get(targetId);
+    var totalActions = db.prepare('SELECT COUNT(*) as count FROM activity_log WHERE user_id = ?').get(targetId);
+    var recentLogs = db.prepare('SELECT action, detail, logged_at FROM activity_log WHERE user_id = ? ORDER BY logged_at DESC LIMIT 5').all(targetId);
+
+    var statusText = 'No Access';
+    if (blacklisted) statusText = 'Blacklisted';
+    else if (admin) statusText = 'Admin';
+    else if (authorized) statusText = 'Authorized';
+
+    var logsText = recentLogs.length
+      ? recentLogs.map(function(l) { return '/' + l.action + ' - ' + (l.detail || 'N/A') + ' (' + l.logged_at + ')'; }).join('\n')
+      : 'No activity recorded';
+
+    var embedColour = blacklisted ? 0xED4245 : admin ? 0xFEE75C : authorized ? 0x57F287 : 0x99AAB5;
+
+    var uiEmbed = new EmbedBuilder()
+      .setTitle('User Profile: ' + targetId)
+      .setColor(embedColour)
+      .addFields(
+        { name: 'Status', value: statusText, inline: true },
+        { name: 'Total Actions', value: String(totalActions ? totalActions.count : 0), inline: true },
+        { name: 'Key Used', value: keyRow ? ('Redeemed: ' + keyRow.created_at) : 'None', inline: false },
+        { name: 'Language', value: cfg ? (cfg.language || 'english') : 'english', inline: true },
+        { name: 'Response Style', value: cfg ? (cfg.response_style || 'balanced') : 'balanced', inline: true },
+        { name: 'Custom Prompt', value: cfg && cfg.system_prompt ? cfg.system_prompt.slice(0, 100) : 'None', inline: false },
+        { name: 'Last 5 Actions', value: logsText, inline: false }
+      )
+      .setTimestamp();
+
+    logActivity(user.id, user.username, 'userinfo', targetId);
+    return interaction.reply({ embeds: [uiEmbed], ephemeral: true });
   }
 
   if (commandName === 'broadcast') {
