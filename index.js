@@ -941,9 +941,8 @@ if (commandName === 'broadcast') {
       // Render with emojis (all lines up to MAX_LINES)
       const { lines: allLines, truncated: parseTruncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emojiConfig);
 
-      // Build inline preview: keep adding lines until we'd exceed 1900 chars
-      // Reserve chars for: ```\n (4) + \n``` (4) + \n... (4) + \n + flagsLine
-      const CHAR_LIMIT = 2000 - 4 - 4 - 4 - 1 - flagsLine.length;
+      // Build preview: keep adding lines until we'd exceed Discord's 2000 char limit
+      const CHAR_LIMIT = 1900 - flagsLine.length - 5;
       let previewLines = [];
       let charCount = 0;
       let inlineTruncated = false;
@@ -953,7 +952,7 @@ if (commandName === 'broadcast') {
         charCount += ln.length + 1;
       }
       const hierarchyContent = previewLines.join('\n') + ((inlineTruncated || parseTruncated) ? '\n...' : '');
-      const inlineMsg = '```\n' + hierarchyContent + '\n```\n' + flagsLine;
+      const inlineMsg = hierarchyContent + '\n\n' + flagsLine;
 
       return interaction.editReply({ content: inlineMsg });
 
