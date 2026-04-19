@@ -193,6 +193,11 @@ const commands = [
     .setDescription('Ask the AI to explain a piece of code (requires key)')
     .addStringOption(opt => opt.setName('code').setDescription('The code to explain').setRequired(true))
     .setDMPermission(true),
+  new SlashCommandBuilder()
+    .setName('test')
+    .setDescription('Test a script for errors, fixes, and danger level (requires key)')
+    .addStringOption(opt => opt.setName('script').setDescription('The script to test and analyse').setRequired(true))
+    .setDMPermission(true),
 
   new SlashCommandBuilder()
     .setName('broadcast')
@@ -776,8 +781,56 @@ client.on('interactionCreate', async interaction => {
         .setColor(0x5865F2)
         .setDescription(text.length > 4096 ? text.slice(0, 4090) + '...' : text);
       return interaction.editReply({ embeds: [embed] });
-    } catch {
-      return interaction.editReply({ content: 'Could not explain the code right now. Try again later.' });
+
+
+  if (commandName === 'test') {
+    if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
+    if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
+    if (maintenanceMode && !isOwner(user.id)) return interaction.reply({ content: 'The bot is currently in maintenance mode. Try again later.', ephemeral: true });
+
+    const script = interaction.options.getString('script');
+    await interaction.deferReply();
+    try {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a code security and quality analyst. When given a script, analyse it and respond in this EXACT format using Discord markdown:
+
+\`\`\`
+📊 SCRIPT ANALYSIS REPORT
+═══════════════════════════
+
+🚨 ERRORS FOUND:
+[List any syntax errors, runtime errors, or bugs. If none, write "None detected."]
+
+🔧 WHAT TO FIX:
+[List specific fixes with brief explanations. If nothing to fix, write "No fixes needed."]
+
+⚠️ DANGER LEVEL:
+[Pick exactly ONE: 🔴 DANGEROUS — contains malicious or destructive code | 🟡 MID — could cause unintended harm if misused | 🟢 NOT DANGEROUS — safe, poses no significant risk]
+\`\`\`
+
+Be accurate and honest. Replace the bracketed danger level line with only one of the three options.`
+          },
+          { role: 'user', content: `Test and analyse this script:\n\n${script}` }
+        ],
+        max_tokens: 1500,
+      });
+      const text = completion.choices[0].message.content;
+      logActivity(user.id, user.username, 'test', script.slice(0, 100));
+
+      const embed = new EmbedBuilder()
+        .setTitle('🧪 Script Test Results')
+        .setColor(0x5865F2)
+        .setAuthor({ name: `Tested by ${user.username}`, iconURL: user.displayAvatarURL() })
+        .setDescription(text.length > 4096 ? text.slice(0, 4090) + '...' : text);
+
+      return interaction.editReply({ embeds: [embed] });
+    } catch (err) {
+      console.error('Test command error:', err);
+      return interaction.editReply({ content: 'Could not analyse the script right now. Try again later.' });
     }
   }
 
