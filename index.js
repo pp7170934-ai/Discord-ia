@@ -53,6 +53,11 @@ db.exec(`
     added_at TEXT DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS global_config (
+    key TEXT PRIMARY KEY,
+    value TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS activity_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT,
@@ -297,9 +302,33 @@ function getUserConfig(userId) {
   return config;
 }
 
+const PERSONALITY_PROMPTS = {
+  default:   'You are a helpful AI assistant specialized in scripting, coding, and programming.',
+  assistant: 'You are a friendly, helpful general-purpose assistant. Answer clearly and helpfully.',
+  coder:     'You are an expert programmer. Always format code correctly, be precise and technical.',
+  tutor:     'You are a patient tutor. Explain concepts step by step in simple, clear terms.',
+};
+
+function getGlobalConfig() {
+  const rows = db.prepare('SELECT key, value FROM global_config').all();
+  const cfg = {
+    system_prompt: '',
+    model: 'llama-3.3-70b-versatile',
+    temperature: 1.0,
+    max_tokens: 1500,
+    personality: 'default',
+  };
+  for (const row of rows) cfg[row.key] = row.value;
+  cfg.temperature = parseFloat(cfg.temperature);
+  cfg.max_tokens = parseInt(cfg.max_tokens);
+  return cfg;
+}
+
 function buildAIPrompt(config, question) {
+  const globalCfg = getGlobalConfig();
   let systemParts = [];
-  systemParts.push('You are a helpful AI assistant specialized in scripting, coding, and programming.');
+  systemParts.push(PERSONALITY_PROMPTS[globalCfg.personality] || PERSONALITY_PROMPTS.default);
+  if (globalCfg.system_prompt) systemParts.push(globalCfg.system_prompt);
   if (config.use_codeblocks) systemParts.push('Always wrap any code, scripts, or commands in proper Discord markdown codeblocks with the correct language tag.');
   if (config.language && config.language !== 'english') systemParts.push(`Respond in ${config.language}.`);
   if (config.response_style === 'concise') systemParts.push('Keep responses concise and to the point.');
@@ -485,9 +514,10 @@ client.on('interactionCreate', async interaction => {
         userContent = q;
       }
 
+      const globalCfg = getGlobalConfig();
       const model = isImage
         ? 'meta-llama/llama-4-scout-17b-16e-instruct'
-        : 'llama-3.3-70b-versatile';
+        : globalCfg.model;
 
       const completion = await groq.chat.completions.create({
         model,
@@ -495,7 +525,8 @@ client.on('interactionCreate', async interaction => {
           { role: 'system', content: system },
           { role: 'user', content: userContent }
         ],
-        max_tokens: 1500,
+        temperature: globalCfg.temperature,
+        max_tokens: globalCfg.max_tokens,
       });
       logActivity(user.id, user.username, 'askai', question.slice(0, 100));
       const text = completion.choices[0].message.content;
