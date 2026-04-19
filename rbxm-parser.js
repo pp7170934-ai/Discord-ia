@@ -233,11 +233,12 @@ function renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emoj
 
     const typeId = instanceTypes.get(ref);
     const className = typeId !== undefined ? (typeNames.get(typeId) ?? 'Unknown') : 'Unknown';
-    const name = instanceNames.get(ref) || className;
+    const name = instanceNames.get(ref);
     const indent = level === 0 ? '' : ' '.repeat(level + 1);
     const icon = getEmoji(className, emojiConfig);
+    const label = (name && name !== className) ? `${name} (${className})` : className;
 
-    lines.push(`${indent}${icon}${name} [${className}]`);
+    lines.push(`${indent}${icon}${label}`);
 
     const kids = children.get(ref) || [];
     for (const kid of kids) {
