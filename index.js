@@ -941,20 +941,25 @@ if (commandName === 'broadcast') {
       // Render with emojis (all lines up to MAX_LINES)
       const { lines: allLines, truncated: parseTruncated } = renderHierarchy(typeNames, instanceTypes, parentOf, instanceNames, emojiConfig);
 
-      // Build preview: keep adding lines until we'd exceed Discord's 2000 char limit
-      const CHAR_LIMIT = 1900 - flagsLine.length - 5;
+      // Build embed description (max 4096 chars for embed)
+      const DESC_LIMIT = 4000;
       let previewLines = [];
       let charCount = 0;
       let inlineTruncated = false;
       for (const ln of allLines) {
-        if (charCount + ln.length + 1 > CHAR_LIMIT) { inlineTruncated = true; break; }
+        if (charCount + ln.length + 1 > DESC_LIMIT) { inlineTruncated = true; break; }
         previewLines.push(ln);
         charCount += ln.length + 1;
       }
       const hierarchyContent = previewLines.join('\n') + ((inlineTruncated || parseTruncated) ? '\n...' : '');
-      const inlineMsg = hierarchyContent + '\n\n' + flagsLine;
 
-      return interaction.editReply({ content: inlineMsg });
+      const embed = new EmbedBuilder()
+        .setColor(0x5865F2)
+        .setAuthor({ name: `Scanned by ${user.username}`, iconURL: user.displayAvatarURL() })
+        .setDescription(hierarchyContent)
+        .setFooter({ text: flagsLine });
+
+      return interaction.editReply({ embeds: [embed] });
 
     } catch (err) {
       const msg = err.message || 'Unknown error';
