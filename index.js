@@ -207,6 +207,78 @@ const commands = [
     .setDMPermission(true),
 
   new SlashCommandBuilder()
+    .setName('generate')
+    .setDescription('Generate a script from a description (requires key)')
+    .addStringOption(opt => opt.setName('description').setDescription('Describe the script you want').setRequired(true))
+    .addStringOption(opt =>
+      opt.setName('language')
+        .setDescription('Programming language (default: Python)')
+        .addChoices(
+          { name: 'Python', value: 'Python' },
+          { name: 'JavaScript', value: 'JavaScript' },
+          { name: 'Lua', value: 'Lua' },
+          { name: 'Bash', value: 'Bash' },
+          { name: 'TypeScript', value: 'TypeScript' },
+          { name: 'C#', value: 'C#' }
+        )
+    )
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('convert')
+    .setDescription('Convert a script from one language to another (requires key)')
+    .addStringOption(opt => opt.setName('script').setDescription('The script to convert').setRequired(true))
+    .addStringOption(opt =>
+      opt.setName('from')
+        .setDescription('Source language')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Python', value: 'Python' },
+          { name: 'JavaScript', value: 'JavaScript' },
+          { name: 'Lua', value: 'Lua' },
+          { name: 'Bash', value: 'Bash' },
+          { name: 'TypeScript', value: 'TypeScript' },
+          { name: 'C#', value: 'C#' }
+        )
+    )
+    .addStringOption(opt =>
+      opt.setName('to')
+        .setDescription('Target language')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Python', value: 'Python' },
+          { name: 'JavaScript', value: 'JavaScript' },
+          { name: 'Lua', value: 'Lua' },
+          { name: 'Bash', value: 'Bash' },
+          { name: 'TypeScript', value: 'TypeScript' },
+          { name: 'C#', value: 'C#' }
+        )
+    )
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('optimize')
+    .setDescription('Optimize a script for performance and cleaner code (requires key)')
+    .addStringOption(opt => opt.setName('script').setDescription('The script to optimize').setRequired(true))
+    .addStringOption(opt =>
+      opt.setName('focus')
+        .setDescription('What to optimize for (default: all)')
+        .addChoices(
+          { name: 'Performance — make it faster', value: 'performance' },
+          { name: 'Readability — make it cleaner', value: 'readability' },
+          { name: 'Memory — reduce memory usage', value: 'memory' },
+          { name: 'All — full optimization', value: 'all' }
+        )
+    )
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('review')
+    .setDescription('Get a full AI code review of your script (requires key)')
+    .addStringOption(opt => opt.setName('script').setDescription('The script to review').setRequired(true))
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
     .setName('broadcast')
     .setDescription('[OWNER] Broadcast a message to all servers the bot is in')
     .addStringOption(opt => opt.setName('message').setDescription('Message to broadcast').setRequired(true))
@@ -903,7 +975,222 @@ Be specific, practical, and beginner-friendly. If code was provided, reference i
     }
   }
 
-if (commandName === 'broadcast') {
+if (commandName === 'generate') {
+    if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
+    if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
+    if (maintenanceMode && !isOwner(user.id)) return interaction.reply({ content: 'The bot is currently in maintenance mode.', ephemeral: true });
+
+    const description = interaction.options.getString('description');
+    const language = interaction.options.getString('language') || 'Python';
+    await interaction.deferReply();
+    try {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert scripter. Generate a complete, working ${language} script based on the user's description. Respond in this EXACT format:
+
+\`\`\`${language.toLowerCase()}
+[The complete script here — clean, well-commented, production-ready]
+\`\`\`
+
+📝 WHAT IT DOES:
+[2-3 sentence explanation of how the script works]
+
+📦 REQUIREMENTS:
+[List any libraries/packages needed to run it, or write "None — uses built-in only"]
+
+Be thorough. Write real, working code — not pseudocode or placeholders.`
+          },
+          { role: 'user', content: `Generate a ${language} script that: ${description}` }
+        ],
+        max_tokens: 2000,
+      });
+      const text = completion.choices[0].message.content;
+      logActivity(user.id, user.username, 'generate', description.slice(0, 100));
+
+      const chunks = [];
+      let remaining = text;
+      while (remaining.length > 1900) { chunks.push(remaining.slice(0, 1900)); remaining = remaining.slice(1900); }
+      if (remaining) chunks.push(remaining);
+
+      const embed = new EmbedBuilder()
+        .setTitle(`⚙️ Generated ${language} Script`)
+        .setColor(0x57F287)
+        .setAuthor({ name: `Generated for ${user.username}`, iconURL: user.displayAvatarURL() })
+        .setDescription(chunks[0].length > 4096 ? chunks[0].slice(0, 4090) + '...' : chunks[0]);
+
+      await interaction.editReply({ embeds: [embed] });
+      for (let i = 1; i < chunks.length; i++) await interaction.followUp({ content: chunks[i] });
+    } catch (err) {
+      console.error('Generate command error:', err);
+      return interaction.editReply({ content: 'Could not generate the script right now. Try again later.' });
+    }
+  }
+
+  if (commandName === 'convert') {
+    if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
+    if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
+    if (maintenanceMode && !isOwner(user.id)) return interaction.reply({ content: 'The bot is currently in maintenance mode.', ephemeral: true });
+
+    const script = interaction.options.getString('script');
+    const fromLang = interaction.options.getString('from');
+    const toLang = interaction.options.getString('to');
+    if (fromLang === toLang) return interaction.reply({ content: 'Source and target language must be different.', ephemeral: true });
+    await interaction.deferReply();
+    try {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: `You are an expert at converting code between programming languages. Convert the provided ${fromLang} script to ${toLang}. Respond in this EXACT format:
+
+\`\`\`${toLang.toLowerCase()}
+[The complete converted script — idiomatic, clean, fully working in ${toLang}]
+\`\`\`
+
+🔄 CONVERSION NOTES:
+[Explain any key differences between the two languages that affected the conversion, e.g. different syntax, replaced libraries, changed patterns]
+
+⚠️ WATCH OUT FOR:
+[Anything the user should be aware of when running the converted script]`
+          },
+          { role: 'user', content: `Convert this ${fromLang} script to ${toLang}:\n\n${script}` }
+        ],
+        max_tokens: 2000,
+      });
+      const text = completion.choices[0].message.content;
+      logActivity(user.id, user.username, 'convert', `${fromLang} -> ${toLang}`);
+
+      const chunks = [];
+      let remaining = text;
+      while (remaining.length > 1900) { chunks.push(remaining.slice(0, 1900)); remaining = remaining.slice(1900); }
+      if (remaining) chunks.push(remaining);
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🔄 ${fromLang} → ${toLang} Conversion`)
+        .setColor(0xFEE75C)
+        .setAuthor({ name: `Converted for ${user.username}`, iconURL: user.displayAvatarURL() })
+        .setDescription(chunks[0].length > 4096 ? chunks[0].slice(0, 4090) + '...' : chunks[0]);
+
+      await interaction.editReply({ embeds: [embed] });
+      for (let i = 1; i < chunks.length; i++) await interaction.followUp({ content: chunks[i] });
+    } catch (err) {
+      console.error('Convert command error:', err);
+      return interaction.editReply({ content: 'Could not convert the script right now. Try again later.' });
+    }
+  }
+
+  if (commandName === 'optimize') {
+    if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
+    if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
+    if (maintenanceMode && !isOwner(user.id)) return interaction.reply({ content: 'The bot is currently in maintenance mode.', ephemeral: true });
+
+    const script = interaction.options.getString('script');
+    const focus = interaction.options.getString('focus') || 'all';
+    const focusLabel = { performance: 'Performance', readability: 'Readability', memory: 'Memory Usage', all: 'Full Optimization' }[focus];
+    await interaction.deferReply();
+    try {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a senior code optimizer. Rewrite the provided script optimized for: ${focusLabel}. Respond in this EXACT format:
+
+\`\`\`
+[The fully optimized script — complete and ready to run]
+\`\`\`
+
+📈 IMPROVEMENTS MADE:
+[Bullet list of every optimization you applied and why]
+
+⚡ PERFORMANCE GAIN:
+[Estimated improvement or qualitative description of the gain]`
+          },
+          { role: 'user', content: `Optimize this script (focus: ${focusLabel}):\n\n${script}` }
+        ],
+        max_tokens: 2000,
+      });
+      const text = completion.choices[0].message.content;
+      logActivity(user.id, user.username, 'optimize', script.slice(0, 100));
+
+      const chunks = [];
+      let remaining = text;
+      while (remaining.length > 1900) { chunks.push(remaining.slice(0, 1900)); remaining = remaining.slice(1900); }
+      if (remaining) chunks.push(remaining);
+
+      const embed = new EmbedBuilder()
+        .setTitle(`⚡ Optimized Script — ${focusLabel}`)
+        .setColor(0xEB459E)
+        .setAuthor({ name: `Optimized for ${user.username}`, iconURL: user.displayAvatarURL() })
+        .setDescription(chunks[0].length > 4096 ? chunks[0].slice(0, 4090) + '...' : chunks[0]);
+
+      await interaction.editReply({ embeds: [embed] });
+      for (let i = 1; i < chunks.length; i++) await interaction.followUp({ content: chunks[i] });
+    } catch (err) {
+      console.error('Optimize command error:', err);
+      return interaction.editReply({ content: 'Could not optimize the script right now. Try again later.' });
+    }
+  }
+
+  if (commandName === 'review') {
+    if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
+    if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
+    if (maintenanceMode && !isOwner(user.id)) return interaction.reply({ content: 'The bot is currently in maintenance mode.', ephemeral: true });
+
+    const script = interaction.options.getString('script');
+    await interaction.deferReply();
+    try {
+      const completion = await groq.chat.completions.create({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a senior software engineer doing a thorough code review. Respond in this EXACT format:
+
+\`\`\`
+📋 CODE REVIEW REPORT
+═══════════════════════════
+
+⭐ OVERALL RATING: [X/10]
+
+✅ WHAT'S GOOD:
+[List strengths — what the code does well]
+
+🚨 ISSUES FOUND:
+[List bugs, anti-patterns, security issues, or bad practices. Rate each as [CRITICAL] [MAJOR] or [MINOR]]
+
+💡 SUGGESTIONS:
+[Concrete improvements — be specific, reference the code directly]
+
+🎯 FINAL VERDICT:
+[1-2 sentence summary — is this code production-ready, needs work, or a complete rewrite?]
+\`\`\``
+          },
+          { role: 'user', content: `Please review this script:\n\n${script}` }
+        ],
+        max_tokens: 1800,
+      });
+      const text = completion.choices[0].message.content;
+      logActivity(user.id, user.username, 'review', script.slice(0, 100));
+
+      const embed = new EmbedBuilder()
+        .setTitle('📋 Code Review')
+        .setColor(0x5865F2)
+        .setAuthor({ name: `Reviewed for ${user.username}`, iconURL: user.displayAvatarURL() })
+        .setDescription(text.length > 4096 ? text.slice(0, 4090) + '...' : text);
+
+      return interaction.editReply({ embeds: [embed] });
+    } catch (err) {
+      console.error('Review command error:', err);
+      return interaction.editReply({ content: 'Could not review the script right now. Try again later.' });
+    }
+  }
+
+  if (commandName === 'broadcast') {
         if (!isOwner(user.id)) return interaction.reply({ content: 'Only owner.', ephemeral: true });
         await interaction.deferReply({ ephemeral: true });
         const message = interaction.options.getString('message');
