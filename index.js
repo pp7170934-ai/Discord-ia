@@ -196,7 +196,8 @@ const commands = [
   new SlashCommandBuilder()
     .setName('test')
     .setDescription('Test a script for errors, fixes, and danger level (requires key)')
-    .addStringOption(opt => opt.setName('script').setDescription('The script to test and analyse').setRequired(true))
+    .addStringOption(opt => opt.setName('script').setDescription('Paste your script here (or upload a file below)'))
+    .addAttachmentOption(opt => opt.setName('file').setDescription('Upload a script file to test (.js .py .lua .sh .ts etc.)'))
     .setDMPermission(true),
 
   new SlashCommandBuilder()
@@ -204,24 +205,6 @@ const commands = [
     .setDescription('Debug an error message with AI step-by-step help (requires key)')
     .addStringOption(opt => opt.setName('error').setDescription('The error message or issue to debug').setRequired(true))
     .addStringOption(opt => opt.setName('code').setDescription('Optional: the code that caused the error'))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('generate')
-    .setDescription('Generate a script from a description (requires key)')
-    .addStringOption(opt => opt.setName('description').setDescription('Describe the script you want').setRequired(true))
-    .addStringOption(opt =>
-      opt.setName('language')
-        .setDescription('Programming language (default: Python)')
-        .addChoices(
-          { name: 'Python', value: 'Python' },
-          { name: 'JavaScript', value: 'JavaScript' },
-          { name: 'Lua', value: 'Lua' },
-          { name: 'Bash', value: 'Bash' },
-          { name: 'TypeScript', value: 'TypeScript' },
-          { name: 'C#', value: 'C#' }
-        )
-    )
     .setDMPermission(true),
 
   new SlashCommandBuilder()
@@ -876,8 +859,22 @@ client.on('interactionCreate', async interaction => {
     if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
     if (maintenanceMode && !isOwner(user.id)) return interaction.reply({ content: 'The bot is currently in maintenance mode. Try again later.', ephemeral: true });
 
-    const script = interaction.options.getString('script');
+    var scriptInput = interaction.options.getString('script') || '';
+    var fileAttachment = interaction.options.getAttachment('file');
+    if (!scriptInput && !fileAttachment) {
+      return interaction.reply({ content: 'Please paste a script or upload a file to test.', ephemeral: true });
+    }
     await interaction.deferReply();
+    var script = scriptInput;
+    if (fileAttachment) {
+      try {
+        var fileRes = await fetch(fileAttachment.url);
+        var fileText = await fileRes.text();
+        script = fileText;
+      } catch (fetchErr) {
+        return interaction.editReply({ content: 'Could not read the uploaded file. Make sure it is a plain text or script file.' });
+      }
+    }
     try {
       const completion = await groq.chat.completions.create({
         model: 'llama-3.3-70b-versatile',
@@ -981,60 +978,6 @@ Be specific, practical, and beginner-friendly. If code was provided, reference i
     } catch (err) {
       console.error('Debug command error:', err);
       return interaction.editReply({ content: 'Could not debug the error right now. Try again later.' });
-    }
-  }
-
-if (commandName === 'generate') {
-    if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
-    if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
-    if (maintenanceMode && !isOwner(user.id)) return interaction.reply({ content: 'The bot is currently in maintenance mode.', ephemeral: true });
-
-    const description = interaction.options.getString('description');
-    const language = interaction.options.getString('language') || 'Python';
-    await interaction.deferReply();
-    try {
-      const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: `You are an expert scripter. Generate a complete, working ${language} script based on the user's description. Respond in this EXACT format:
-
-\`\`\`${language.toLowerCase()}
-[The complete script here — clean, well-commented, production-ready]
-\`\`\`
-
-📝 WHAT IT DOES:
-[2-3 sentence explanation of how the script works]
-
-📦 REQUIREMENTS:
-[List any libraries/packages needed to run it, or write "None — uses built-in only"]
-
-Be thorough. Write real, working code — not pseudocode or placeholders.`
-          },
-          { role: 'user', content: `Generate a ${language} script that: ${description}` }
-        ],
-        max_tokens: 2000,
-      });
-      const text = completion.choices[0].message.content;
-      logActivity(user.id, user.username, 'generate', description.slice(0, 100));
-
-      const chunks = [];
-      let remaining = text;
-      while (remaining.length > 1900) { chunks.push(remaining.slice(0, 1900)); remaining = remaining.slice(1900); }
-      if (remaining) chunks.push(remaining);
-
-      const embed = new EmbedBuilder()
-        .setTitle(`⚙️ Generated ${language} Script`)
-        .setColor(0x57F287)
-        .setAuthor({ name: `Generated for ${user.username}`, iconURL: user.displayAvatarURL() })
-        .setDescription(chunks[0].length > 4096 ? chunks[0].slice(0, 4090) + '...' : chunks[0]);
-
-      await interaction.editReply({ embeds: [embed] });
-      for (let i = 1; i < chunks.length; i++) await interaction.followUp({ content: chunks[i] });
-    } catch (err) {
-      console.error('Generate command error:', err);
-      return interaction.editReply({ content: 'Could not generate the script right now. Try again later.' });
     }
   }
 
