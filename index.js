@@ -506,6 +506,8 @@ client.on('interactionCreate', async interaction => {
       '`/hierarchy [rbx_file]` — Parse an RBXM/RBXL file and show its instance tree',
       '`/about` — About this bot',
       '`/help` — Show this message',
+      '`/test [script]` - test a script and get results of it',
+      '`/review [script]` - get your script reviewed and have advices to upgrade it',
     ];
     const ownerCommands = [
       '`/key-gen [amount]` — Generate one-time keys',
