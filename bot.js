@@ -245,6 +245,11 @@ const commands = [
         .setRequired(true)
     )
     .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('banlist')
+    .setDescription('Show all currently banned Roblox user IDs')
+    .setDMPermission(true),
 ];
 
 async function registerCommands() {
@@ -353,6 +358,7 @@ client.on('interactionCreate', async interaction => {
       '`/stats` — Bot statistics',
       '`/ban [robloxuserid]` — Ban a Roblox user via Maple API',
       '`/unban [robloxuserid]` — Unban a Roblox user via Maple API',
+      '`/banlist` — Show all banned Roblox user IDs',
     ];
     const embed = new EmbedBuilder()
       .setTitle('Command List')
@@ -825,6 +831,57 @@ client.on('interactionCreate', async interaction => {
     }
   }
 });
+
+  if (commandName === 'banlist') {
+    if (!MARIZMA_API_KEY) {
+      return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured on this bot.', ephemeral: true });
+    }
+
+    await interaction.deferReply();
+
+    try {
+      const res = await fetch('https://maple-api.marizma.games/v1/server/bans', {
+        headers: { 'X-Api-Key': MARIZMA_API_KEY },
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        return interaction.editReply({ content: '❌ Failed to fetch ban list from the Maple API.' });
+      }
+
+      const bans = data?.data?.Bans ?? [];
+
+      if (bans.length === 0) {
+        return interaction.editReply({ content: '✅ No users are currently banned.' });
+      }
+
+      const chunks = [];
+      let current = [];
+      for (const id of bans) {
+        current.push(`\`${id}\``);
+        if (current.length === 20) { chunks.push(current); current = []; }
+      }
+      if (current.length) chunks.push(current);
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🔨 Ban List (${bans.length} user${bans.length === 1 ? '' : 's'})`)
+        .setColor(0xED4245)
+        .setDescription(chunks[0].join('\n'));
+
+      await interaction.editReply({ embeds: [embed] });
+
+      for (let i = 1; i < chunks.length; i++) {
+        const extra = new EmbedBuilder()
+          .setColor(0xED4245)
+          .setDescription(chunks[i].join('\n'));
+        await interaction.followUp({ embeds: [extra] });
+      }
+    } catch (err) {
+      console.error('Banlist API error:', err);
+      return interaction.editReply({ content: '❌ An error occurred while fetching the ban list.' });
+    }
+  }
 
   if (commandName === 'unban') {
     const robloxUserId = interaction.options.getInteger('robloxuserid');
