@@ -235,6 +235,16 @@ const commands = [
         .setRequired(true)
     )
     .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('unban')
+    .setDescription('[OWNER] Unban a Roblox user via the Maple API')
+    .addIntegerOption(opt =>
+      opt.setName('robloxuserid')
+        .setDescription('The Roblox user ID to unban')
+        .setRequired(true)
+    )
+    .setDMPermission(true),
 ];
 
 async function registerCommands() {
@@ -342,6 +352,7 @@ client.on('interactionCreate', async interaction => {
       '`/maintenance [on/off]` — Toggle maintenance mode',
       '`/stats` — Bot statistics',
       '`/ban [robloxuserid]` — Ban a Roblox user via Maple API',
+      '`/unban [robloxuserid]` — Unban a Roblox user via Maple API',
     ];
     const embed = new EmbedBuilder()
       .setTitle('Command List')
@@ -811,6 +822,40 @@ client.on('interactionCreate', async interaction => {
     } catch (err) {
       console.error('Ban API error:', err);
       return interaction.editReply({ content: '❌ An error occurred while trying to ban the user.' });
+    }
+  }
+});
+
+  if (commandName === 'unban') {
+    const robloxUserId = interaction.options.getInteger('robloxuserid');
+
+    if (!MARIZMA_API_KEY) {
+      return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured on this bot.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      const res = await fetch('https://maple-api.marizma.games/v1/server/banplayer', {
+        method: 'POST',
+        headers: {
+          'X-Api-Key': MARIZMA_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ Banned: false, UserId: robloxUserId }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        return interaction.editReply({ content: `✅ Successfully unbanned Roblox user \`${robloxUserId}\`.` });
+      } else {
+        const msg = data?.data?.message ?? `HTTP ${res.status}`;
+        return interaction.editReply({ content: `❌ Failed to unban user: ${msg}` });
+      }
+    } catch (err) {
+      console.error('Unban API error:', err);
+      return interaction.editReply({ content: '❌ An error occurred while trying to unban the user.' });
     }
   }
 });
