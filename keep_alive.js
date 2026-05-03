@@ -6,8 +6,8 @@ function keepAlive() {
     res.end('Bot is alive!');
   });
 
-  server.listen(5000, '0.0.0.0', () => {
-    console.log('Keep-alive server running on port 5000');
+  server.listen(8080, '0.0.0.0', () => {
+    console.log('Keep-alive server running on port 8080');
   });
 }
 
