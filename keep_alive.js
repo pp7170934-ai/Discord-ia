@@ -1,15 +1,13 @@
 const http = require('http');
 
-function keepAlive() {
-  const port = process.env.PORT || 5000;
+module.exports = function() {
   const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Bot is alive!');
+    res.end('Bot is alive\n');
   });
 
-  server.listen(port, '0.0.0.0', () => {
-    console.log(`Keep-alive server running on port ${port}`);
+  const port = process.env.PORT || 3000;
+  server.listen(port, () => {
+    console.log(`Keep-alive server listening on port ${port}`);
   });
-}
-
-module.exports = keepAlive;
+};
