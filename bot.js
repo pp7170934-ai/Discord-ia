@@ -275,6 +275,11 @@ const commands = [
         .setRequired(true)
     )
     .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('shutdown')
+    .setDescription('[OWNER] Shut down the Roblox server (30 second countdown)')
+    .setDMPermission(true),
 ];
 
 async function registerCommands() {
@@ -386,6 +391,7 @@ client.on('interactionCreate', async interaction => {
       '`/banlist` — Show all banned Roblox user IDs',
       '`/kick [robloxuserid] [reason]` — Kick a player from the Roblox server',
       '`/announce [message]` — Send an announcement to the Roblox server',
+      '`/shutdown` — Shut down the Roblox server (owner only)',
     ];
     const embed = new EmbedBuilder()
       .setTitle('Command List')
@@ -858,6 +864,32 @@ client.on('interactionCreate', async interaction => {
     }
   }
 });
+
+  if (commandName === 'shutdown') {
+    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
+    if (!MARIZMA_API_KEY) return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured.', ephemeral: true });
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      const res = await fetch('https://maple-api.marizma.games/v1/server/shutdown', {
+        method: 'POST',
+        headers: { 'X-Api-Key': MARIZMA_API_KEY, 'Content-Type': 'application/json' },
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        return interaction.editReply({ content: '⚠️ Server shutdown initiated. The Roblox server will shut down in 30 seconds.' });
+      } else {
+        const msg = data?.data?.message ?? `HTTP ${res.status}`;
+        return interaction.editReply({ content: `❌ Failed to shut down server: ${msg}` });
+      }
+    } catch (err) {
+      console.error('Shutdown API error:', err);
+      return interaction.editReply({ content: '❌ An error occurred while trying to shut down the server.' });
+    }
+  }
 
   if (commandName === 'kick') {
     if (!MARIZMA_API_KEY) {
