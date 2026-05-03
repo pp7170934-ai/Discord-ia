@@ -924,6 +924,56 @@ client.login(TOKEN).catch(err => {
     }
   }
 
+  if (commandName === 'serverinfo') {
+    if (!MARIZMA_API_KEY) return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured.', ephemeral: true });
+
+    await interaction.deferReply();
+
+    try {
+      const res = await fetch('https://maple-api.marizma.games/v1/server', {
+        headers: { 'X-Api-Key': MARIZMA_API_KEY },
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        return interaction.editReply({ content: '❌ Failed to fetch server info from the Maple API.' });
+      }
+
+      const info = data.data || {};
+      const admins = info.Admins || [];
+      const headAdmins = info.HeadAdmins || [];
+      const players = info.Players || [];
+      const owner = info.Owner ? '`' + info.Owner + '`' : 'Unknown';
+      const adminsText = admins.length ? admins.slice(0, 15).map(id => '`' + id + '`').join(', ') : 'None';
+      const headAdminsText = headAdmins.length ? headAdmins.map(id => '`' + id + '`').join(', ') : 'None';
+      const playersText = players.length ? players.slice(0, 20).map(player => {
+        const id = player.UserId ?? player.userId ?? player.Id ?? player.id ?? player;
+        const name = player.Username ?? player.username ?? player.Name ?? player.name ?? '';
+        return name ? '`' + id + '` ' + name : '`' + id + '`';
+      }).join('\n') : 'None';
+
+      const embed = new EmbedBuilder()
+        .setTitle('🖥️ Server Info')
+        .setColor(0x5865F2)
+        .addFields(
+          { name: 'Server Name', value: String(info.ServerName || 'Unknown'), inline: false },
+          { name: 'Code', value: String(info.Code || 'Unknown'), inline: true },
+          { name: 'Owner', value: owner, inline: true },
+          { name: 'Players', value: String((info.PlayerCount ?? 0) + '/' + (info.MaxPlayers ?? 0)), inline: true },
+          { name: 'Banned', value: info.ServerIsBanned ? 'Yes' : 'No', inline: true },
+          { name: 'Discovery', value: String(info.DiscoveryStatus || 'Unknown'), inline: true },
+          { name: 'Players (IDs + Usernames)', value: playersText, inline: false },
+          { name: 'Admins', value: adminsText, inline: false },
+          { name: 'Head Admins', value: headAdminsText, inline: false },
+        );
+
+      return interaction.editReply({ embeds: [embed] });
+    } catch (err) {
+      console.error('Server info API error:', err);
+      return interaction.editReply({ content: '❌ An error occurred while fetching server info.' });
+    }
+  }
+
   if (commandName === 'shutdown') {
     if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
     if (!MARIZMA_API_KEY) return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured.', ephemeral: true });
