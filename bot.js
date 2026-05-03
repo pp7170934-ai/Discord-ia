@@ -958,41 +958,56 @@ client.on('interactionCreate', async interaction => {
     await interaction.deferReply();
 
     try {
-      const res = await fetch('https://maple-api.marizma.games/v1/server/bans', {
-        headers: { 'X-Api-Key': MARIZMA_API_KEY },
-      });
+      const [bansRes, serverRes] = await Promise.all([
+        fetch('https://maple-api.marizma.games/v1/server/bans', {
+          headers: { 'X-Api-Key': MARIZMA_API_KEY },
+        }),
+        fetch('https://maple-api.marizma.games/v1/server', {
+          headers: { 'X-Api-Key': MARIZMA_API_KEY },
+        }),
+      ]);
 
-      const data = await res.json();
+      const bansData = await bansRes.json();
+      const serverData = await serverRes.json();
 
-      if (!res.ok || !data.success) {
+      if (!bansRes.ok || !bansData.success) {
         return interaction.editReply({ content: '❌ Failed to fetch ban list from the Maple API.' });
       }
 
-      const bans = data?.data?.Bans ?? [];
+      const bans = bansData?.data?.Bans ?? [];
+      const adminIds = new Set([
+        ...(serverData?.data?.Admins ?? []),
+        ...(serverData?.data?.HeadAdmins ?? []),
+        serverData?.data?.Owner,
+      ].filter(Boolean));
 
       if (bans.length === 0) {
         return interaction.editReply({ content: '✅ No users are currently banned.' });
       }
 
+      const lines = bans.map((id) => {
+        const label = adminIds.has(id) ? ' (admin)' : '';
+        return '`' + id + '`' + label;
+      });
+
       const chunks = [];
-      let current = [];
-      for (const id of bans) {
-        current.push(`\`${id}\``);
-        if (current.length === 20) { chunks.push(current); current = []; }
+      for (let i = 0; i < lines.length; i += 20) {
+        chunks.push(lines.slice(i, i + 20));
       }
-      if (current.length) chunks.push(current);
 
       const embed = new EmbedBuilder()
         .setTitle(`🔨 Ban List (${bans.length} user${bans.length === 1 ? '' : 's'})`)
         .setColor(0xED4245)
-        .setDescription(chunks[0].join('\n'));
+        .setDescription(chunks[0].join('
+'));
 
       await interaction.editReply({ embeds: [embed] });
 
       for (let i = 1; i < chunks.length; i++) {
         const extra = new EmbedBuilder()
           .setColor(0xED4245)
-          .setDescription(chunks[i].join('\n'));
+          .setDescription(chunks[i].join('
+'));
         await interaction.followUp({ embeds: [extra] });
       }
     } catch (err) {
