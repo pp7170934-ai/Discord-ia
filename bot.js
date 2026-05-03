@@ -782,7 +782,6 @@ client.on('interactionCreate', async interaction => {
   }
 
   if (commandName === 'ban') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
     const robloxUserId = interaction.options.getInteger('robloxuserid');
 
     if (!MARIZMA_API_KEY) {
