@@ -1,1162 +1,142 @@
 const keepAlive = require('./keep_alive');
 keepAlive();
 
-const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField, ApplicationCommandOptionType } = require('discord.js');
-const Groq = require('groq-sdk');
-const Database = require('better-sqlite3');
-const { v4: uuidv4 } = require('uuid');
-
-const OWNER_ID = process.env.OWNER_ID || '1397488831514808341';
-const TOKEN = process.env.DISCORD_TOKEN;
+const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder } = require('discord.js');
+const MARIZMA_BASE = 'https://maple-api.marizma.games';
+const TOKEN = process.env.DISCORD_BOT_TOKEN;
 const MARIZMA_API_KEY = process.env.MARIZMA_API_KEY;
-
-const db = new Database('bot.db');
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS keys (
-    key TEXT PRIMARY KEY,
-    used INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now')),
-    used_by TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS authorized_users (
-    user_id TEXT PRIMARY KEY,
-    redeemed_at TEXT DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS blacklist (
-    user_id TEXT PRIMARY KEY,
-    blacklisted_at TEXT DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS user_config (
-    user_id TEXT PRIMARY KEY,
-    system_prompt TEXT DEFAULT '',
-    use_codeblocks INTEGER DEFAULT 0,
-    language TEXT DEFAULT 'english',
-    response_style TEXT DEFAULT 'balanced'
-  );
-`);
-
-let maintenanceMode = false;
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.DirectMessages,
-    GatewayIntentBits.DirectMessageReactions,
-    GatewayIntentBits.DirectMessageTyping,
-    GatewayIntentBits.MessageContent,
-  ],
-  partials: ['CHANNEL', 'MESSAGE', 'REACTION']
-});
 
 const commands = [
   new SlashCommandBuilder()
-    .setName('scan')
-    .setDescription('Get all public info about a Discord user')
-    .addUserOption(opt => opt.setName('user').setDescription('The user to scan').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('askai')
-    .setDescription('Ask the AI a question (requires a valid key)')
-    .addStringOption(opt => opt.setName('question').setDescription('Your question').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('redeem')
-    .setDescription('Redeem a key to use /askai')
-    .addStringOption(opt => opt.setName('key').setDescription('Your key').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('config')
-    .setDescription('Configure the AI behaviour for your account')
-    .addStringOption(opt =>
-      opt.setName('setting')
-        .setDescription('Setting to configure')
-        .setRequired(true)
-        .addChoices(
-          { name: 'codeblocks - Always wrap code in codeblocks', value: 'codeblocks' },
-          { name: 'language - Set response language', value: 'language' },
-          { name: 'style - Set response style', value: 'style' },
-          { name: 'systemprompt - Custom system prompt', value: 'systemprompt' },
-          { name: 'reset - Reset all settings to default', value: 'reset' }
-        )
-    )
-    .addStringOption(opt => opt.setName('value').setDescription('The value for this setting'))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('myconfig')
-    .setDescription('View your current AI configuration')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('help')
-    .setDescription('Show all available commands')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('key-gen')
-    .setDescription('[OWNER] Generate a one-time use key')
-    .addIntegerOption(opt => opt.setName('amount').setDescription('Number of keys to generate (default 1)').setMinValue(1).setMaxValue(20))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('blacklist')
-    .setDescription('[OWNER] Blacklist a user from using /askai')
-    .addStringOption(opt => opt.setName('userid').setDescription('User ID to blacklist').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('remove')
-    .setDescription('[OWNER] Remove a user from the blacklist')
-    .addStringOption(opt => opt.setName('userid').setDescription('User ID to remove from blacklist').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('keys')
-    .setDescription('[OWNER] View all generated keys and their status')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('revoke')
-    .setDescription('[OWNER] Revoke access from a user (removes their key redemption)')
-    .addStringOption(opt => opt.setName('userid').setDescription('User ID to revoke').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('stats')
-    .setDescription('[OWNER] View bot statistics')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('about')
-    .setDescription('About this bot')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('ping')
-    .setDescription('Check bot latency')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('avatar')
-    .setDescription('Get the avatar of a user')
-    .addUserOption(opt => opt.setName('user').setDescription('User to get avatar of'))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('8ball')
-    .setDescription('Ask the magic 8 ball a question')
-    .addStringOption(opt => opt.setName('question').setDescription('Your yes/no question').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('coinflip')
-    .setDescription('Flip a coin')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('roast')
-    .setDescription('Get the AI to roast someone')
-    .addUserOption(opt => opt.setName('user').setDescription('Who to roast').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('joke')
-    .setDescription('Get a random programming/scripting joke')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('explain')
-    .setDescription('Ask the AI to explain a piece of code (requires key)')
-    .addStringOption(opt => opt.setName('code').setDescription('The code to explain').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('rps')
-    .setDescription('Play Rock Paper Scissors against the bot')
-    .addStringOption(opt =>
-      opt.setName('choice')
-        .setDescription('Your choice')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Rock', value: 'rock' },
-          { name: 'Paper', value: 'paper' },
-          { name: 'Scissors', value: 'scissors' }
-        )
-    )
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('dm')
-    .setDescription('[OWNER] Send a DM to a user as the bot')
-    .addStringOption(opt => opt.setName('userid').setDescription('User ID to DM').setRequired(true))
-    .addStringOption(opt => opt.setName('message').setDescription('Message to send').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('broadcast')
-    .setDescription('[OWNER] Broadcast a message to all servers the bot is in')
-    .addStringOption(opt => opt.setName('message').setDescription('Message to broadcast').setRequired(true))
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('maintenance')
-    .setDescription('[OWNER] Toggle maintenance mode (disables /askai for users)')
-    .addStringOption(opt =>
-      opt.setName('status')
-        .setDescription('on or off')
-        .setRequired(true)
-        .addChoices(
-          { name: 'On', value: 'on' },
-          { name: 'Off', value: 'off' }
-        )
-    )
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
-    .setName('clearkeys')
-    .setDescription('[OWNER] Delete all unused keys')
-    .setDMPermission(true),
-
-  new SlashCommandBuilder()
     .setName('ban')
-    .setDescription('[OWNER] Ban a Roblox user via the Maple API')
-    .addIntegerOption(opt =>
-      opt.setName('robloxuserid')
-        .setDescription('The Roblox user ID to ban')
-        .setRequired(true)
-    )
-    .setDMPermission(true),
-
+    .setDescription('Ban a Roblox user via the Maple API')
+    .addIntegerOption(option => option.setName('robloxuserid').setDescription('The Roblox user ID to ban').setRequired(true))
+    .toJSON(),
   new SlashCommandBuilder()
     .setName('unban')
-    .setDescription('[OWNER] Unban a Roblox user via the Maple API')
-    .addIntegerOption(opt =>
-      opt.setName('robloxuserid')
-        .setDescription('The Roblox user ID to unban')
-        .setRequired(true)
-    )
-    .setDMPermission(true),
-
+    .setDescription('Unban a Roblox user via the Maple API')
+    .addIntegerOption(option => option.setName('robloxuserid').setDescription('The Roblox user ID to unban').setRequired(true))
+    .toJSON(),
   new SlashCommandBuilder()
     .setName('banlist')
     .setDescription('Show all currently banned Roblox user IDs')
-    .setDMPermission(true),
-
+    .toJSON(),
   new SlashCommandBuilder()
     .setName('kick')
     .setDescription('Kick a Roblox player from the server')
-    .addIntegerOption(opt =>
-      opt.setName('robloxuserid')
-        .setDescription('The Roblox user ID to kick')
-        .setRequired(true)
-    )
-    .addStringOption(opt =>
-      opt.setName('reason')
-        .setDescription('Optional reason for the kick')
-        .setRequired(false)
-    )
-    .setDMPermission(true),
-
+    .addIntegerOption(option => option.setName('robloxuserid').setDescription('The Roblox user ID to kick').setRequired(true))
+    .addStringOption(option => option.setName('reason').setDescription('Optional reason for the kick'))
+    .toJSON(),
   new SlashCommandBuilder()
     .setName('announce')
     .setDescription('Send an announcement to the Roblox server')
-    .addStringOption(opt =>
-      opt.setName('message')
-        .setDescription('The message to announce')
-        .setRequired(true)
-    )
-    .setDMPermission(true),
-
+    .addStringOption(option => option.setName('message').setDescription('The message to announce').setRequired(true))
+    .toJSON(),
   new SlashCommandBuilder()
     .setName('shutdown')
-    .setDescription('[OWNER] Shut down the Roblox server (30 second countdown)')
-    .setDMPermission(true),
-
+    .setDescription('Shut down the Roblox server (owner only)')
+    .toJSON(),
   new SlashCommandBuilder()
     .setName('serverinfo')
     .setDescription('Show live Roblox server information')
-    .setDMPermission(true),
+    .toJSON(),
 ];
 
-async function registerCommands() {
+async function callApi(path, body) {
+  const res = await fetch(`${MARIZMA_BASE}${path}`, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'X-Api-Key': MARIZMA_API_KEY, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return { res, data: await res.json() };
+}
+
+async function startBot() {
+  if (!TOKEN || !MARIZMA_API_KEY) return;
+
   const rest = new REST({ version: '10' }).setToken(TOKEN);
-  try {
-    console.log('Registering slash commands...');
-    const clientId = client.user.id;
-    const commandsJson = commands.map(c => ({
-      ...c.toJSON(),
-      integration_types: [0, 1],
-      contexts: [0, 1, 2],
-    }));
-    await rest.put(Routes.applicationCommands(clientId), { body: commandsJson });
-    console.log('Slash commands registered globally with DM support.');
-  } catch (err) {
-    console.error('Failed to register commands:', err);
-  }
-}
+  const clientId = (await rest.get(Routes.currentApplication())).id;
+  await rest.put(Routes.applicationCommands(clientId), { body: commands });
 
-function isOwner(userId) {
-  return userId === OWNER_ID;
-}
+  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-function isBlacklisted(userId) {
-  const row = db.prepare('SELECT 1 FROM blacklist WHERE user_id = ?').get(userId);
-  return !!row;
-}
+  client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
 
-function isAuthorized(userId) {
-  const row = db.prepare('SELECT 1 FROM authorized_users WHERE user_id = ?').get(userId);
-  return !!row;
-}
-
-function getUserConfig(userId) {
-  let config = db.prepare('SELECT * FROM user_config WHERE user_id = ?').get(userId);
-  if (!config) {
-    db.prepare('INSERT OR IGNORE INTO user_config (user_id) VALUES (?)').run(userId);
-    config = db.prepare('SELECT * FROM user_config WHERE user_id = ?').get(userId);
-  }
-  return config;
-}
-
-function buildAIPrompt(config, question) {
-  let systemParts = [];
-  systemParts.push('You are a helpful AI assistant specialized in scripting, coding, and programming.');
-  if (config.use_codeblocks) systemParts.push('Always wrap any code, scripts, or commands in proper Discord markdown codeblocks with the correct language tag.');
-  if (config.language && config.language !== 'english') systemParts.push(`Respond in ${config.language}.`);
-  if (config.response_style === 'concise') systemParts.push('Keep responses concise and to the point.');
-  if (config.response_style === 'detailed') systemParts.push('Give detailed, thorough explanations.');
-  if (config.system_prompt) systemParts.push(config.system_prompt);
-  return { system: systemParts.join(' '), question };
-}
-
-client.once('ready', async () => {
-  console.log(`Logged in as ${client.user.tag}`);
-  client.user.setActivity('/help | AI Scripting Bot', { type: 2 });
-  await registerCommands();
-});
-
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const { commandName, user } = interaction;
-
-  if (commandName === 'about') {
-    const embed = new EmbedBuilder()
-      .setTitle('AI Scripting Bot')
-      .setDescription('A powerful AI assistant focused on scripting & coding. Works in DMs and servers.')
-      .setColor(0x5865F2)
-      .addFields(
-        { name: 'Commands', value: 'Use `/help` to see all available commands.' },
-        { name: 'Access', value: 'Use `/redeem` with a valid key to unlock `/askai` and `/explain`.' },
-      )
-      .setFooter({ text: 'Works in DMs and servers' });
-    return interaction.reply({ embeds: [embed], ephemeral: true });
-  }
-
-  if (commandName === 'help') {
-    const userCommands = [
-      '`/scan [user]` — Get public info about a Discord user',
-      '`/avatar [user]` — Show a user\'s avatar',
-      '`/askai [question]` — Ask the AI a question (key required)',
-      '`/explain [code]` — AI explains a piece of code (key required)',
-      '`/redeem [key]` — Redeem a one-time key to unlock AI',
-      '`/config [setting] [value]` — Configure AI behaviour',
-      '`/myconfig` — View your current AI settings',
-      '`/ping` — Check bot latency',
-      '`/8ball [question]` — Ask the magic 8 ball',
-      '`/coinflip` — Flip a coin',
-      '`/rps [choice]` — Rock Paper Scissors',
-      '`/joke` — Get a random dev joke',
-      '`/roast [user]` — AI roasts someone',
-      '`/about` — About this bot',
-      '`/help` — Show this message',
-    ];
-    const ownerCommands = [
-      '`/key-gen [amount]` — Generate one-time keys',
-      '`/keys` — View all keys & status',
-      '`/clearkeys` — Delete all unused keys',
-      '`/blacklist [userid]` — Blacklist a user from AI',
-      '`/remove [userid]` — Remove user from blacklist',
-      '`/revoke [userid]` — Revoke a user\'s access',
-      '`/dm [userid] [message]` — DM a user as the bot',
-      '`/broadcast [message]` — Send message to all servers',
-      '`/maintenance [on/off]` — Toggle maintenance mode',
-      '`/stats` — Bot statistics',
-      '`/ban [robloxuserid]` — Ban a Roblox user via Maple API',
-      '`/unban [robloxuserid]` — Unban a Roblox user via Maple API',
-      '`/banlist` — Show all banned Roblox user IDs',
-      '`/kick [robloxuserid] [reason]` — Kick a player from the Roblox server',
-      '`/announce [message]` — Send an announcement to the Roblox server',
-      '`/shutdown` — Shut down the Roblox server (owner only)',
-      '`/serverinfo` — Show live Roblox server information',
-    ];
-    const embed = new EmbedBuilder()
-      .setTitle('Command List')
-      .setColor(0x5865F2)
-      .addFields(
-        { name: 'User Commands', value: userCommands.join('\n') },
-      );
-    if (isOwner(user.id)) {
-      embed.addFields({ name: 'Owner Commands', value: ownerCommands.join('\n') });
-    }
-    return interaction.reply({ embeds: [embed], ephemeral: true });
-  }
-
-  if (commandName === 'scan') {
-    await interaction.deferReply({ ephemeral: true });
-    const target = interaction.options.getUser('user');
-    try {
-      const fetched = await client.users.fetch(target.id, { force: true });
-      const createdAt = `<t:${Math.floor(fetched.createdTimestamp / 1000)}:F>`;
-      const avatarUrl = fetched.displayAvatarURL({ size: 1024, dynamic: true });
-      const bannerUrl = fetched.bannerURL ? fetched.bannerURL({ size: 1024 }) : null;
-
-      const embed = new EmbedBuilder()
-        .setTitle(`User Scan: ${fetched.username}`)
-        .setColor(fetched.accentColor || 0x5865F2)
-        .setThumbnail(avatarUrl)
-        .addFields(
-          { name: 'Username', value: `${fetched.username}`, inline: true },
-          { name: 'Display Name', value: fetched.globalName || fetched.username, inline: true },
-          { name: 'User ID', value: `\`${fetched.id}\``, inline: true },
-          { name: 'Account Created', value: createdAt, inline: false },
-          { name: 'Bot?', value: fetched.bot ? 'Yes' : 'No', inline: true },
-          { name: 'Avatar URL', value: `[Click here](${avatarUrl})`, inline: true },
-        );
-
-      if (bannerUrl) embed.addFields({ name: 'Banner URL', value: `[Click here](${bannerUrl})`, inline: true });
-      if (fetched.accentColor) embed.addFields({ name: 'Accent Color', value: `#${fetched.accentColor.toString(16).padStart(6, '0')}`, inline: true });
-
-      const badges = fetched.flags?.toArray() || [];
-      if (badges.length > 0) embed.addFields({ name: 'Badges', value: badges.join(', '), inline: false });
-
-      embed.setImage(bannerUrl || null);
-      return interaction.editReply({ embeds: [embed] });
-    } catch (err) {
-      return interaction.editReply({ content: `Could not fetch user info. Make sure the user ID is valid.` });
-    }
-  }
-
-  if (commandName === 'redeem') {
-    const keyInput = interaction.options.getString('key').trim();
-    const row = db.prepare('SELECT * FROM keys WHERE key = ?').get(keyInput);
-    if (!row) return interaction.reply({ content: 'Invalid key.', ephemeral: true });
-    if (row.used) return interaction.reply({ content: 'This key has already been used.', ephemeral: true });
-    if (isAuthorized(user.id)) return interaction.reply({ content: 'You already have access to `/askai`!', ephemeral: true });
-
-    db.prepare('UPDATE keys SET used = 1, used_by = ? WHERE key = ?').run(user.id, keyInput);
-    db.prepare('INSERT OR IGNORE INTO authorized_users (user_id) VALUES (?)').run(user.id);
-
-    return interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0x57F287).setDescription('Key redeemed! You now have access to `/askai`.')],
-      ephemeral: true
-    });
-  }
-
-  if (commandName === 'askai') {
-    if (isBlacklisted(user.id)) {
-      return interaction.reply({ content: 'You have been blacklisted from using this command.', ephemeral: true });
-    }
-    if (!isAuthorized(user.id) && !isOwner(user.id)) {
-      return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
-    }
-    if (maintenanceMode && !isOwner(user.id)) {
-      return interaction.reply({ content: 'The bot is currently in maintenance mode. Try again later.', ephemeral: true });
+    if (interaction.commandName === 'ban') {
+      await interaction.deferReply();
+      const id = interaction.options.getInteger('robloxuserid', true);
+      const { res, data } = await callApi('/v1/server/banplayer', { Banned: true, UserId: id });
+      return interaction.editReply(res.ok && data.success ? `✅ Successfully banned Roblox user \`${id}\`.` : `❌ Failed to ban user: ${data?.data?.message ?? `HTTP ${res.status}`}`);
     }
 
-    const question = interaction.options.getString('question');
-    await interaction.deferReply();
-
-    try {
-      const config = getUserConfig(user.id);
-      const { system, question: q } = buildAIPrompt(config, question);
-
-      const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: q }
-        ],
-        max_tokens: 1500,
-      });
-      const text = completion.choices[0].message.content;
-
-      const chunks = [];
-      let remaining = text;
-      while (remaining.length > 1900) {
-        chunks.push(remaining.slice(0, 1900));
-        remaining = remaining.slice(1900);
-      }
-      if (remaining) chunks.push(remaining);
-
-      const embed = new EmbedBuilder()
-        .setColor(0x5865F2)
-        .setAuthor({ name: `Question by ${user.username}`, iconURL: user.displayAvatarURL() })
-        .setDescription(chunks[0])
-
-      await interaction.editReply({ embeds: [embed] });
-
-      for (let i = 1; i < chunks.length; i++) {
-        await interaction.followUp({ content: chunks[i] });
-      }
-    } catch (err) {
-      console.error('AI error:', err);
-      return interaction.editReply({ content: 'An error occurred while contacting the AI. Please try again later.' });
-    }
-  }
-
-  if (commandName === 'config') {
-    const setting = interaction.options.getString('setting');
-    const value = interaction.options.getString('value');
-
-    if (setting === 'reset') {
-      db.prepare('DELETE FROM user_config WHERE user_id = ?').run(user.id);
-      return interaction.reply({ content: 'Your AI configuration has been reset to defaults.', ephemeral: true });
+    if (interaction.commandName === 'unban') {
+      await interaction.deferReply();
+      const id = interaction.options.getInteger('robloxuserid', true);
+      const { res, data } = await callApi('/v1/server/banplayer', { Banned: false, UserId: id });
+      return interaction.editReply(res.ok && data.success ? `✅ Successfully unbanned Roblox user \`${id}\`.` : `❌ Failed to unban user: ${data?.data?.message ?? `HTTP ${res.status}`}`);
     }
 
-    if (!value) return interaction.reply({ content: 'Please provide a value for this setting.', ephemeral: true });
-
-    getUserConfig(user.id);
-
-    if (setting === 'codeblocks') {
-      const val = value.toLowerCase() === 'on' || value.toLowerCase() === 'true' || value === '1' ? 1 : 0;
-      db.prepare('UPDATE user_config SET use_codeblocks = ? WHERE user_id = ?').run(val, user.id);
-      return interaction.reply({ content: `Codeblocks are now **${val ? 'enabled' : 'disabled'}**.`, ephemeral: true });
-    }
-
-    if (setting === 'language') {
-      db.prepare('UPDATE user_config SET language = ? WHERE user_id = ?').run(value, user.id);
-      return interaction.reply({ content: `Response language set to **${value}**.`, ephemeral: true });
-    }
-
-    if (setting === 'style') {
-      const allowed = ['balanced', 'concise', 'detailed'];
-      if (!allowed.includes(value.toLowerCase())) {
-        return interaction.reply({ content: `Invalid style. Choose from: \`balanced\`, \`concise\`, \`detailed\`.`, ephemeral: true });
-      }
-      db.prepare('UPDATE user_config SET response_style = ? WHERE user_id = ?').run(value.toLowerCase(), user.id);
-      return interaction.reply({ content: `Response style set to **${value}**.`, ephemeral: true });
-    }
-
-    if (setting === 'systemprompt') {
-      if (value.length > 500) return interaction.reply({ content: 'System prompt must be under 500 characters.', ephemeral: true });
-      db.prepare('UPDATE user_config SET system_prompt = ? WHERE user_id = ?').run(value, user.id);
-      return interaction.reply({ content: `Custom system prompt saved.`, ephemeral: true });
-    }
-  }
-
-  if (commandName === 'myconfig') {
-    const config = getUserConfig(user.id);
-    const embed = new EmbedBuilder()
-      .setTitle('Your AI Configuration')
-      .setColor(0x5865F2)
-      .addFields(
-        { name: 'Codeblocks', value: config.use_codeblocks ? 'Enabled' : 'Disabled', inline: true },
-        { name: 'Language', value: config.language || 'english', inline: true },
-        { name: 'Style', value: config.response_style || 'balanced', inline: true },
-        { name: 'Custom System Prompt', value: config.system_prompt || '_None_', inline: false }
-      );
-    return interaction.reply({ embeds: [embed], ephemeral: true });
-  }
-
-  if (commandName === 'key-gen') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const amount = interaction.options.getInteger('amount') || 1;
-    const generated = [];
-    for (let i = 0; i < amount; i++) {
-      const key = uuidv4().replace(/-/g, '').slice(0, 16).toUpperCase();
-      db.prepare('INSERT INTO keys (key) VALUES (?)').run(key);
-      generated.push(`\`${key}\``);
-    }
-    const embed = new EmbedBuilder()
-      .setTitle(`Generated ${amount} Key${amount > 1 ? 's' : ''}`)
-      .setColor(0x57F287)
-      .setDescription(generated.join('\n'))
-      .setFooter({ text: 'Each key is single-use. Share via DM.' });
-    return interaction.reply({ embeds: [embed], ephemeral: true });
-  }
-
-  if (commandName === 'keys') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const rows = db.prepare('SELECT * FROM keys ORDER BY created_at DESC LIMIT 30').all();
-    if (!rows.length) return interaction.reply({ content: 'No keys generated yet.', ephemeral: true });
-    const lines = rows.map(r => `\`${r.key}\` — ${r.used ? `Used by ${r.used_by}` : 'Available'}`);
-    const embed = new EmbedBuilder()
-      .setTitle('All Keys (last 30)')
-      .setColor(0x5865F2)
-      .setDescription(lines.join('\n'));
-    return interaction.reply({ embeds: [embed], ephemeral: true });
-  }
-
-  if (commandName === 'blacklist') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const targetId = interaction.options.getString('userid');
-    db.prepare('INSERT OR IGNORE INTO blacklist (user_id) VALUES (?)').run(targetId);
-    return interaction.reply({ content: `User \`${targetId}\` has been blacklisted from /askai.`, ephemeral: true });
-  }
-
-  if (commandName === 'remove') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const targetId = interaction.options.getString('userid');
-    const result = db.prepare('DELETE FROM blacklist WHERE user_id = ?').run(targetId);
-    if (result.changes === 0) return interaction.reply({ content: `User \`${targetId}\` was not blacklisted.`, ephemeral: true });
-    return interaction.reply({ content: `User \`${targetId}\` has been removed from the blacklist.`, ephemeral: true });
-  }
-
-  if (commandName === 'revoke') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const targetId = interaction.options.getString('userid');
-    const result = db.prepare('DELETE FROM authorized_users WHERE user_id = ?').run(targetId);
-    if (result.changes === 0) return interaction.reply({ content: `User \`${targetId}\` does not have access.`, ephemeral: true });
-    return interaction.reply({ content: `Access revoked for user \`${targetId}\`.`, ephemeral: true });
-  }
-
-  if (commandName === 'stats') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const totalKeys = db.prepare('SELECT COUNT(*) as c FROM keys').get().c;
-    const usedKeys = db.prepare('SELECT COUNT(*) as c FROM keys WHERE used = 1').get().c;
-    const authorizedUsers = db.prepare('SELECT COUNT(*) as c FROM authorized_users').get().c;
-    const blacklisted = db.prepare('SELECT COUNT(*) as c FROM blacklist').get().c;
-    const servers = client.guilds.cache.size;
-
-    const embed = new EmbedBuilder()
-      .setTitle('Bot Statistics')
-      .setColor(0x5865F2)
-      .addFields(
-        { name: 'Servers', value: `${servers}`, inline: true },
-        { name: 'Total Keys Generated', value: `${totalKeys}`, inline: true },
-        { name: 'Keys Used', value: `${usedKeys}`, inline: true },
-        { name: 'Authorized Users', value: `${authorizedUsers}`, inline: true },
-        { name: 'Blacklisted Users', value: `${blacklisted}`, inline: true },
-        { name: 'Maintenance Mode', value: maintenanceMode ? 'ON' : 'OFF', inline: true },
-      );
-    return interaction.reply({ embeds: [embed], ephemeral: true });
-  }
-
-  if (commandName === 'ping') {
-    const sent = await interaction.deferReply({ fetchReply: true });
-    const latency = sent.createdTimestamp - interaction.createdTimestamp;
-    const wsLatency = client.ws.ping;
-    const embed = new EmbedBuilder()
-      .setTitle('Pong!')
-      .setColor(0x57F287)
-      .addFields(
-        { name: 'Roundtrip', value: `${latency}ms`, inline: true },
-        { name: 'WebSocket', value: `${wsLatency}ms`, inline: true }
-      );
-    return interaction.editReply({ embeds: [embed] });
-  }
-
-  if (commandName === 'avatar') {
-    const target = interaction.options.getUser('user') || user;
-    const fetched = await client.users.fetch(target.id, { force: true });
-    const avatarUrl = fetched.displayAvatarURL({ size: 1024, dynamic: true });
-    const embed = new EmbedBuilder()
-      .setTitle(`${fetched.username}'s Avatar`)
-      .setImage(avatarUrl)
-      .setColor(0x5865F2)
-      .setDescription(`[Open in browser](${avatarUrl})`);
-    return interaction.reply({ embeds: [embed] });
-  }
-
-  if (commandName === '8ball') {
-    const responses = [
-      'It is certain.', 'It is decidedly so.', 'Without a doubt.', 'Yes, definitely.',
-      'You may rely on it.', 'As I see it, yes.', 'Most likely.', 'Outlook good.',
-      'Yes.', 'Signs point to yes.', 'Reply hazy, try again.', 'Ask again later.',
-      'Better not tell you now.', 'Cannot predict now.', 'Concentrate and ask again.',
-      "Don't count on it.", 'My reply is no.', 'My sources say no.',
-      'Outlook not so good.', 'Very doubtful.'
-    ];
-    const question = interaction.options.getString('question');
-    const answer = responses[Math.floor(Math.random() * responses.length)];
-    const embed = new EmbedBuilder()
-      .setTitle('🎱 Magic 8 Ball')
-      .setColor(0x2C2F33)
-      .addFields(
-        { name: 'Question', value: question },
-        { name: 'Answer', value: `*${answer}*` }
-      );
-    return interaction.reply({ embeds: [embed] });
-  }
-
-  if (commandName === 'coinflip') {
-    const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
-    const embed = new EmbedBuilder()
-      .setTitle('Coin Flip')
-      .setDescription(`**${result}!**`)
-      .setColor(result === 'Heads' ? 0xF1C40F : 0x95A5A6);
-    return interaction.reply({ embeds: [embed] });
-  }
-
-  if (commandName === 'rps') {
-    const choices = ['rock', 'paper', 'scissors'];
-    const botChoice = choices[Math.floor(Math.random() * 3)];
-    const userChoice = interaction.options.getString('choice');
-    const emoji = { rock: '🪨', paper: '📄', scissors: '✂️' };
-
-    let result;
-    if (userChoice === botChoice) result = "It's a tie!";
-    else if (
-      (userChoice === 'rock' && botChoice === 'scissors') ||
-      (userChoice === 'paper' && botChoice === 'rock') ||
-      (userChoice === 'scissors' && botChoice === 'paper')
-    ) result = 'You win!';
-    else result = 'I win!';
-
-    const embed = new EmbedBuilder()
-      .setTitle('Rock Paper Scissors')
-      .setColor(result === 'You win!' ? 0x57F287 : result === 'I win!' ? 0xED4245 : 0xFEE75C)
-      .addFields(
-        { name: 'Your choice', value: `${emoji[userChoice]} ${userChoice}`, inline: true },
-        { name: 'My choice', value: `${emoji[botChoice]} ${botChoice}`, inline: true },
-        { name: 'Result', value: `**${result}**`, inline: false }
-      );
-    return interaction.reply({ embeds: [embed] });
-  }
-
-  if (commandName === 'joke') {
-    await interaction.deferReply();
-    try {
-      const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'You are a comedian who tells short, funny programming and scripting jokes. Tell one joke only, keep it under 3 sentences.' },
-          { role: 'user', content: 'Tell me a programming joke.' }
-        ],
-        max_tokens: 200,
-      });
-      const jokeText = completion.choices[0].message.content;
-      const embed = new EmbedBuilder()
-        .setTitle('😂 Dev Joke')
-        .setDescription(jokeText)
-        .setColor(0xFEE75C);
-      return interaction.editReply({ embeds: [embed] });
-    } catch {
-      return interaction.editReply({ content: 'Could not fetch a joke right now. Try again later.' });
-    }
-  }
-
-  if (commandName === 'roast') {
-    await interaction.deferReply();
-    const target = interaction.options.getUser('user');
-    try {
-      const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'You are a witty roast comedian. Keep it funny, not mean-spirited or offensive. No swearing. 2-3 sentences max.' },
-          { role: 'user', content: `Roast a Discord user named "${target.username}".` }
-        ],
-        max_tokens: 200,
-      });
-      const roastText = completion.choices[0].message.content;
-      const embed = new EmbedBuilder()
-        .setTitle(`🔥 Roasting ${target.username}`)
-        .setDescription(roastText)
-        .setThumbnail(target.displayAvatarURL())
-        .setColor(0xED4245);
-      return interaction.editReply({ embeds: [embed] });
-    } catch {
-      return interaction.editReply({ content: 'Could not generate a roast right now. Try again later.' });
-    }
-  }
-
-  if (commandName === 'explain') {
-    if (isBlacklisted(user.id)) return interaction.reply({ content: 'You are blacklisted.', ephemeral: true });
-    if (!isAuthorized(user.id) && !isOwner(user.id)) return interaction.reply({ content: 'You need to redeem a key first. Use `/redeem [key]`.', ephemeral: true });
-    if (maintenanceMode && !isOwner(user.id)) return interaction.reply({ content: 'The bot is currently in maintenance mode. Try again later.', ephemeral: true });
-
-    const code = interaction.options.getString('code');
-    await interaction.deferReply();
-    try {
-      const completion = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: 'You are a coding expert. Explain the provided code clearly and concisely, covering what it does, how it works, and any notable patterns. Always use Discord markdown codeblocks when referencing code.' },
-          { role: 'user', content: `Explain this code:\n\`\`\`\n${code}\n\`\`\`` }
-        ],
-        max_tokens: 1200,
-      });
-      const text = completion.choices[0].message.content;
-      const embed = new EmbedBuilder()
-        .setTitle('Code Explanation')
-        .setColor(0x5865F2)
-        .setDescription(text.length > 4096 ? text.slice(0, 4090) + '...' : text);
-      return interaction.editReply({ embeds: [embed] });
-    } catch {
-      return interaction.editReply({ content: 'Could not explain the code right now. Try again later.' });
-    }
-  }
-
-  if (commandName === 'dm') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const targetId = interaction.options.getString('userid');
-    const message = interaction.options.getString('message');
-    try {
-      const targetUser = await client.users.fetch(targetId);
-      await targetUser.send(message);
-      return interaction.reply({ content: `Message sent to \`${targetUser.username}\`.`, ephemeral: true });
-    } catch {
-      return interaction.reply({ content: `Could not send DM to \`${targetId}\`. They may have DMs disabled.`, ephemeral: true });
-    }
-  }
-
-  if (commandName === 'broadcast') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const message = interaction.options.getString('message');
-    await interaction.deferReply({ ephemeral: true });
-    let sent = 0;
-    for (const guild of client.guilds.cache.values()) {
-      try {
-        const channel = guild.channels.cache.find(c => c.isTextBased() && c.permissionsFor(guild.members.me)?.has('SendMessages'));
-        if (channel) { await channel.send(message); sent++; }
-      } catch {}
-    }
-    return interaction.editReply({ content: `Broadcast sent to **${sent}** server(s).` });
-  }
-
-  if (commandName === 'maintenance') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const status = interaction.options.getString('status');
-    maintenanceMode = status === 'on';
-    return interaction.reply({ content: `Maintenance mode is now **${maintenanceMode ? 'ON' : 'OFF'}**. ${maintenanceMode ? 'Only you can use /askai.' : 'All users can use /askai.'}`, ephemeral: true });
-  }
-
-  if (commandName === 'clearkeys') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    const result = db.prepare('DELETE FROM keys WHERE used = 0').run();
-    return interaction.reply({ content: `Deleted **${result.changes}** unused key(s).`, ephemeral: true });
-  }
-
-  if (commandName === 'ban') {
-    const robloxUserId = interaction.options.getInteger('robloxuserid');
-
-    if (!MARIZMA_API_KEY) {
-      return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured on this bot.', ephemeral: true });
-    }
-
-    await interaction.deferReply({ ephemeral: true });
-
-    try {
-      const res = await fetch('https://maple-api.marizma.games/v1/server/banplayer', {
-        method: 'POST',
-        headers: {
-          'X-Api-Key': MARIZMA_API_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ Banned: true, UserId: robloxUserId }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        return interaction.editReply({ content: `✅ Successfully banned Roblox user \`${robloxUserId}\`.` });
-      } else {
-        const msg = data?.data?.message ?? `HTTP ${res.status}`;
-        return interaction.editReply({ content: `❌ Failed to ban user: ${msg}` });
-      }
-    } catch (err) {
-      console.error('Ban API error:', err);
-      return interaction.editReply({ content: '❌ An error occurred while trying to ban the user.' });
-    }
-  }
-});
-
-client.login(TOKEN).catch(err => {
-  console.error('Failed to login:', err.message);
-  process.exit(1);
-});  if (commandName === 'serverinfo') {
-    if (!MARIZMA_API_KEY) return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured.', ephemeral: true });
-
-    await interaction.deferReply();
-
-    try {
-      const res = await fetch('https://maple-api.marizma.games/v1/server', {
-        headers: { 'X-Api-Key': MARIZMA_API_KEY },
-      });
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        return interaction.editReply({ content: '❌ Failed to fetch server info from the Maple API.' });
-      }
-
-      const info = data.data || {};
-      const admins = info.Admins || [];
-      const headAdmins = info.HeadAdmins || [];
-      const players = info.Players || [];
-      const owner = info.Owner ? '`' + info.Owner + '`' : 'Unknown';
-      const adminsText = admins.length ? admins.slice(0, 15).map(id => '`' + id + '`').join(', ') : 'None';
-      const headAdminsText = headAdmins.length ? headAdmins.map(id => '`' + id + '`').join(', ') : 'None';
-      const playersText = players.length ? players.slice(0, 20).map(player => {
-        const id = player.UserId ?? player.userId ?? player.Id ?? player.id ?? player;
-        const name = player.Username ?? player.username ?? player.Name ?? player.name ?? '';
-        return name ? '`' + id + '` ' + name : '`' + id + '`';
-      }).join('\n') : 'None';
-
-      const embed = new EmbedBuilder()
-        .setTitle('🖥️ Server Info')
-        .setColor(0x5865F2)
-        .addFields(
-          { name: 'Server Name', value: String(info.ServerName || 'Unknown'), inline: false },
-          { name: 'Code', value: String(info.Code || 'Unknown'), inline: true },
-          { name: 'Owner', value: owner, inline: true },
-          { name: 'Players', value: String((info.PlayerCount ?? 0) + '/' + (info.MaxPlayers ?? 0)), inline: true },
-          { name: 'Banned', value: info.ServerIsBanned ? 'Yes' : 'No', inline: true },
-          { name: 'Discovery', value: String(info.DiscoveryStatus || 'Unknown'), inline: true },
-          { name: 'Players (IDs + Usernames)', value: playersText, inline: false },
-          { name: 'Admins', value: adminsText, inline: false },
-          { name: 'Head Admins', value: headAdminsText, inline: false },
-        );
-
-      return interaction.editReply({ embeds: [embed] });
-    } catch (err) {
-      console.error('Server info API error:', err);
-      return interaction.editReply({ content: '❌ An error occurred while fetching server info.' });
-    }
-  }
-
-  if (commandName === 'serverinfo') {
-    if (!MARIZMA_API_KEY) return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured.', ephemeral: true });
-
-    await interaction.deferReply();
-
-    try {
-      const res = await fetch('https://maple-api.marizma.games/v1/server', {
-        headers: { 'X-Api-Key': MARIZMA_API_KEY },
-      });
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        return interaction.editReply({ content: '❌ Failed to fetch server info from the Maple API.' });
-      }
-
-      const info = data.data || {};
-      const admins = info.Admins || [];
-      const headAdmins = info.HeadAdmins || [];
-      const players = info.Players || [];
-      const owner = info.Owner ? '`' + info.Owner + '`' : 'Unknown';
-      const adminsText = admins.length ? admins.slice(0, 15).map(id => '`' + id + '`').join(', ') : 'None';
-      const headAdminsText = headAdmins.length ? headAdmins.map(id => '`' + id + '`').join(', ') : 'None';
-      const playersText = players.length ? players.slice(0, 20).map(player => {
-        const id = player.UserId ?? player.userId ?? player.Id ?? player.id ?? player;
-        const name = player.Username ?? player.username ?? player.Name ?? player.name ?? '';
-        return name ? '`' + id + '` ' + name : '`' + id + '`';
-      }).join('\n') : 'None';
-
-      const embed = new EmbedBuilder()
-        .setTitle('🖥️ Server Info')
-        .setColor(0x5865F2)
-        .addFields(
-          { name: 'Server Name', value: String(info.ServerName || 'Unknown'), inline: false },
-          { name: 'Code', value: String(info.Code || 'Unknown'), inline: true },
-          { name: 'Owner', value: owner, inline: true },
-          { name: 'Players', value: String((info.PlayerCount ?? 0) + '/' + (info.MaxPlayers ?? 0)), inline: true },
-          { name: 'Banned', value: info.ServerIsBanned ? 'Yes' : 'No', inline: true },
-          { name: 'Discovery', value: String(info.DiscoveryStatus || 'Unknown'), inline: true },
-          { name: 'Players (IDs + Usernames)', value: playersText, inline: false },
-          { name: 'Admins', value: adminsText, inline: false },
-          { name: 'Head Admins', value: headAdminsText, inline: false },
-        );
-
-      return interaction.editReply({ embeds: [embed] });
-    } catch (err) {
-      console.error('Server info API error:', err);
-      return interaction.editReply({ content: '❌ An error occurred while fetching server info.' });
-    }
-  }
-
-  if (commandName === 'shutdown') {
-    if (!isOwner(user.id)) return interaction.reply({ content: 'Only the owner can use this command.', ephemeral: true });
-    if (!MARIZMA_API_KEY) return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured.', ephemeral: true });
-
-    await interaction.deferReply({ ephemeral: true });
-
-    try {
-      const res = await fetch('https://maple-api.marizma.games/v1/server/shutdown', {
-        method: 'POST',
-        headers: { 'X-Api-Key': MARIZMA_API_KEY, 'Content-Type': 'application/json' },
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        return interaction.editReply({ content: '⚠️ Server shutdown initiated. The Roblox server will shut down in 30 seconds.' });
-      } else {
-        const msg = data?.data?.message ?? `HTTP ${res.status}`;
-        return interaction.editReply({ content: `❌ Failed to shut down server: ${msg}` });
-      }
-    } catch (err) {
-      console.error('Shutdown API error:', err);
-      return interaction.editReply({ content: '❌ An error occurred while trying to shut down the server.' });
-    }
-  }
-
-  if (commandName === 'kick') {
-    if (!MARIZMA_API_KEY) {
-      return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured on this bot.', ephemeral: true });
-    }
-
-    const robloxUserId = interaction.options.getInteger('robloxuserid');
-    const reason = interaction.options.getString('reason') || '';
-    await interaction.deferReply({ ephemeral: true });
-
-    try {
-      const res = await fetch('https://maple-api.marizma.games/v1/server/moderation/kick', {
-        method: 'POST',
-        headers: { 'X-Api-Key': MARIZMA_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ UserId: robloxUserId, ModerationReason: reason }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        return interaction.editReply({ content: `✅ Successfully kicked Roblox user \`${robloxUserId}\`${reason ? ` — Reason: ${reason}` : ''}.` });
-      } else {
-        const msg = data?.data?.message ?? `HTTP ${res.status}`;
-        return interaction.editReply({ content: `❌ Failed to kick user: ${msg}` });
-      }
-    } catch (err) {
-      console.error('Kick API error:', err);
-      return interaction.editReply({ content: '❌ An error occurred while trying to kick the user.' });
-    }
-  }
-
-  if (commandName === 'announce') {
-    if (!MARIZMA_API_KEY) {
-      return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured on this bot.', ephemeral: true });
-    }
-
-    const message = interaction.options.getString('message');
-    await interaction.deferReply({ ephemeral: true });
-
-    try {
-      const res = await fetch('https://maple-api.marizma.games/v1/server/announce', {
-        method: 'POST',
-        headers: { 'X-Api-Key': MARIZMA_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        return interaction.editReply({ content: `📢 Announcement sent: *${message}*` });
-      } else {
-        const msg = data?.data?.message ?? `HTTP ${res.status}`;
-        return interaction.editReply({ content: `❌ Failed to send announcement: ${msg}` });
-      }
-    } catch (err) {
-      console.error('Announce API error:', err);
-      return interaction.editReply({ content: '❌ An error occurred while sending the announcement.' });
-    }
-  }
-
-  if (commandName === 'banlist') {
-    if (!MARIZMA_API_KEY) {
-      return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured on this bot.', ephemeral: true });
-    }
-
-    await interaction.deferReply();
-
-    try {
+    if (interaction.commandName === 'banlist') {
+      await interaction.deferReply();
       const [bansRes, serverRes] = await Promise.all([
-        fetch('https://maple-api.marizma.games/v1/server/bans', {
-          headers: { 'X-Api-Key': MARIZMA_API_KEY },
-        }),
-        fetch('https://maple-api.marizma.games/v1/server', {
-          headers: { 'X-Api-Key': MARIZMA_API_KEY },
-        }),
+        fetch(`${MARIZMA_BASE}/v1/server/bans`, { headers: { 'X-Api-Key': MARIZMA_API_KEY } }),
+        fetch(`${MARIZMA_BASE}/v1/server`, { headers: { 'X-Api-Key': MARIZMA_API_KEY } }),
       ]);
-
       const bansData = await bansRes.json();
       const serverData = await serverRes.json();
-
-      if (!bansRes.ok || !bansData.success) {
-        return interaction.editReply({ content: '❌ Failed to fetch ban list from the Maple API.' });
-      }
-
       const bans = bansData?.data?.Bans ?? [];
-      const adminIds = new Set([
-        ...(serverData?.data?.Admins ?? []),
-        ...(serverData?.data?.HeadAdmins ?? []),
-        serverData?.data?.Owner,
-      ].filter(Boolean));
-
-      if (bans.length === 0) {
-        return interaction.editReply({ content: '✅ No users are currently banned.' });
-      }
-
-      const lines = bans.map((id) => {
-        const label = adminIds.has(id) ? ' (admin)' : '';
-        return '`' + id + '`' + label;
-      });
-
-      const chunks = [];
-      for (let i = 0; i < lines.length; i += 20) {
-        chunks.push(lines.slice(i, i + 20));
-      }
-
-      const embed = new EmbedBuilder()
-        .setTitle(`🔨 Ban List (${bans.length} user${bans.length === 1 ? '' : 's'})`)
-        .setColor(0xED4245)
-        .setDescription(chunks[0].join('
-'));
-
-      await interaction.editReply({ embeds: [embed] });
-
-      for (let i = 1; i < chunks.length; i++) {
-        const extra = new EmbedBuilder()
-          .setColor(0xED4245)
-          .setDescription(chunks[i].join('
-'));
-        await interaction.followUp({ embeds: [extra] });
-      }
-    } catch (err) {
-      console.error('Banlist API error:', err);
-      return interaction.editReply({ content: '❌ An error occurred while fetching the ban list.' });
-    }
-  }
-
-  if (commandName === 'unban') {
-    const robloxUserId = interaction.options.getInteger('robloxuserid');
-
-    if (!MARIZMA_API_KEY) {
-      return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured on this bot.', ephemeral: true });
+      const adminIds = new Set([...(serverData?.data?.Admins ?? []), ...(serverData?.data?.HeadAdmins ?? []), serverData?.data?.Owner].filter(Boolean));
+      const lines = bans.length ? bans.map(id => `\`${id}\`${adminIds.has(id) ? ' (admin)' : ''}`) : ['No users are currently banned.'];
+      const embed = new EmbedBuilder().setTitle(`🔨 Ban List (${bans.length} users)`).setColor(0xED4245).setDescription(lines.slice(0, 20).join('\n'));
+      return interaction.editReply({ embeds: [embed] });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    if (interaction.commandName === 'kick') {
+      await interaction.deferReply();
+      const id = interaction.options.getInteger('robloxuserid', true);
+      const reason = interaction.options.getString('reason') || '';
+      const { res, data } = await callApi('/v1/server/moderation/kick', { UserId: id, ModerationReason: reason });
+      return interaction.editReply(res.ok && data.success ? `✅ Successfully kicked Roblox user \`${id}\`.` : `❌ Failed to kick user: ${data?.data?.message ?? `HTTP ${res.status}`}`);
+    }
 
-    try {
-      const res = await fetch('https://maple-api.marizma.games/v1/server/banplayer', {
-        method: 'POST',
-        headers: {
-          'X-Api-Key': MARIZMA_API_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ Banned: false, UserId: robloxUserId }),
-      });
+    if (interaction.commandName === 'announce') {
+      await interaction.deferReply();
+      const message = interaction.options.getString('message', true);
+      const { res, data } = await callApi('/v1/server/announce', { message });
+      return interaction.editReply(res.ok && data.success ? `📢 Announcement sent.` : `❌ Failed to send announcement: ${data?.data?.message ?? `HTTP ${res.status}`}`);
+    }
 
+    if (interaction.commandName === 'shutdown') {
+      await interaction.deferReply();
+      const { res, data } = await callApi('/v1/server/shutdown');
+      return interaction.editReply(res.ok && data.success ? `⚠️ Server shutdown initiated.` : `❌ Failed to shut down server: ${data?.data?.message ?? `HTTP ${res.status}`}`);
+    }
+
+    if (interaction.commandName === 'serverinfo') {
+      await interaction.deferReply();
+      const res = await fetch(`${MARIZMA_BASE}/v1/server`, { headers: { 'X-Api-Key': MARIZMA_API_KEY } });
       const data = await res.json();
-
-      if (res.ok && data.success) {
-        return interaction.editReply({ content: `✅ Successfully unbanned Roblox user \`${robloxUserId}\`.` });
-      } else {
-        const msg = data?.data?.message ?? `HTTP ${res.status}`;
-        return interaction.editReply({ content: `❌ Failed to unban user: ${msg}` });
-      }
-    } catch (err) {
-      console.error('Unban API error:', err);
-      return interaction.editReply({ content: '❌ An error occurred while trying to unban the user.' });
+      const info = data?.data || {};
+      const players = info.Players || [];
+      const lines = players.length ? players.slice(0, 20).map(p => {
+        const id = p.UserId ?? p.userId ?? p.Id ?? p.id ?? p;
+        const name = p.Username ?? p.username ?? p.Name ?? p.name ?? '';
+        return name ? `\`${id}\` ${name}` : `\`${id}\``;
+      }).join('\n') : 'None';
+      const embed = new EmbedBuilder().setTitle('🖥️ Server Info').setColor(0x5865F2).addFields(
+        { name: 'Server Name', value: String(info.ServerName || 'Unknown'), inline: false },
+        { name: 'Code', value: String(info.Code || 'Unknown'), inline: true },
+        { name: 'Owner', value: info.Owner ? `\`${info.Owner}\`` : 'Unknown', inline: true },
+        { name: 'Players', value: String((info.PlayerCount ?? 0) + '/' + (info.MaxPlayers ?? 0)), inline: true },
+        { name: 'Players (IDs + Usernames)', value: lines, inline: false },
+      );
+      return interaction.editReply({ embeds: [embed] });
     }
-  }
-});
+  });
 
+  client.once('ready', () => console.log(`Logged in as ${client.user.tag}`));
+  await client.login(TOKEN);
+}
 
+startBot().catch(err => console.error(err));
