@@ -889,9 +889,15 @@ client.on('interactionCreate', async interaction => {
       const info = data.data || {};
       const admins = info.Admins || [];
       const headAdmins = info.HeadAdmins || [];
+      const players = info.Players || [];
       const owner = info.Owner ? '`' + info.Owner + '`' : 'Unknown';
       const adminsText = admins.length ? admins.slice(0, 15).map(id => '`' + id + '`').join(', ') : 'None';
       const headAdminsText = headAdmins.length ? headAdmins.map(id => '`' + id + '`').join(', ') : 'None';
+      const playersText = players.length ? players.slice(0, 20).map(player => {
+        const id = player.UserId ?? player.userId ?? player.Id ?? player.id ?? player;
+        const name = player.Username ?? player.username ?? player.Name ?? player.name ?? '';
+        return name ? '`' + id + '` ' + name : '`' + id + '`';
+      }).join('\n') : 'None';
 
       const embed = new EmbedBuilder()
         .setTitle('🖥️ Server Info')
@@ -903,6 +909,7 @@ client.on('interactionCreate', async interaction => {
           { name: 'Players', value: String((info.PlayerCount ?? 0) + '/' + (info.MaxPlayers ?? 0)), inline: true },
           { name: 'Banned', value: info.ServerIsBanned ? 'Yes' : 'No', inline: true },
           { name: 'Discovery', value: String(info.DiscoveryStatus || 'Unknown'), inline: true },
+          { name: 'Players (IDs + Usernames)', value: playersText, inline: false },
           { name: 'Admins', value: adminsText, inline: false },
           { name: 'Head Admins', value: headAdminsText, inline: false },
         );
