@@ -871,7 +871,10 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-  if (commandName === 'serverinfo') {
+client.login(TOKEN).catch(err => {
+  console.error('Failed to login:', err.message);
+  process.exit(1);
+});  if (commandName === 'serverinfo') {
     if (!MARIZMA_API_KEY) return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured.', ephemeral: true });
 
     await interaction.deferReply();
@@ -1106,7 +1109,4 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-client.login(TOKEN).catch(err => {
-  console.error('Failed to login:', err.message);
-  process.exit(1);
-});
+
