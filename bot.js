@@ -250,6 +250,31 @@ const commands = [
     .setName('banlist')
     .setDescription('Show all currently banned Roblox user IDs')
     .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('kick')
+    .setDescription('Kick a Roblox player from the server')
+    .addIntegerOption(opt =>
+      opt.setName('robloxuserid')
+        .setDescription('The Roblox user ID to kick')
+        .setRequired(true)
+    )
+    .addStringOption(opt =>
+      opt.setName('reason')
+        .setDescription('Optional reason for the kick')
+        .setRequired(false)
+    )
+    .setDMPermission(true),
+
+  new SlashCommandBuilder()
+    .setName('announce')
+    .setDescription('Send an announcement to the Roblox server')
+    .addStringOption(opt =>
+      opt.setName('message')
+        .setDescription('The message to announce')
+        .setRequired(true)
+    )
+    .setDMPermission(true),
 ];
 
 async function registerCommands() {
@@ -359,6 +384,8 @@ client.on('interactionCreate', async interaction => {
       '`/ban [robloxuserid]` — Ban a Roblox user via Maple API',
       '`/unban [robloxuserid]` — Unban a Roblox user via Maple API',
       '`/banlist` — Show all banned Roblox user IDs',
+      '`/kick [robloxuserid] [reason]` — Kick a player from the Roblox server',
+      '`/announce [message]` — Send an announcement to the Roblox server',
     ];
     const embed = new EmbedBuilder()
       .setTitle('Command List')
@@ -831,6 +858,65 @@ client.on('interactionCreate', async interaction => {
     }
   }
 });
+
+  if (commandName === 'kick') {
+    if (!MARIZMA_API_KEY) {
+      return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured on this bot.', ephemeral: true });
+    }
+
+    const robloxUserId = interaction.options.getInteger('robloxuserid');
+    const reason = interaction.options.getString('reason') || '';
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      const res = await fetch('https://maple-api.marizma.games/v1/server/moderation/kick', {
+        method: 'POST',
+        headers: { 'X-Api-Key': MARIZMA_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ UserId: robloxUserId, ModerationReason: reason }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        return interaction.editReply({ content: `✅ Successfully kicked Roblox user \`${robloxUserId}\`${reason ? ` — Reason: ${reason}` : ''}.` });
+      } else {
+        const msg = data?.data?.message ?? `HTTP ${res.status}`;
+        return interaction.editReply({ content: `❌ Failed to kick user: ${msg}` });
+      }
+    } catch (err) {
+      console.error('Kick API error:', err);
+      return interaction.editReply({ content: '❌ An error occurred while trying to kick the user.' });
+    }
+  }
+
+  if (commandName === 'announce') {
+    if (!MARIZMA_API_KEY) {
+      return interaction.reply({ content: '❌ MARIZMA_API_KEY is not configured on this bot.', ephemeral: true });
+    }
+
+    const message = interaction.options.getString('message');
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      const res = await fetch('https://maple-api.marizma.games/v1/server/announce', {
+        method: 'POST',
+        headers: { 'X-Api-Key': MARIZMA_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        return interaction.editReply({ content: `📢 Announcement sent: *${message}*` });
+      } else {
+        const msg = data?.data?.message ?? `HTTP ${res.status}`;
+        return interaction.editReply({ content: `❌ Failed to send announcement: ${msg}` });
+      }
+    } catch (err) {
+      console.error('Announce API error:', err);
+      return interaction.editReply({ content: '❌ An error occurred while sending the announcement.' });
+    }
+  }
 
   if (commandName === 'banlist') {
     if (!MARIZMA_API_KEY) {
